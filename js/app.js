@@ -262,7 +262,10 @@ function updateFooter() {
   more.disabled = state.loadingHistory;
   if (!n && !state.loadingHistory) setFeedState(state.lastErr ? 'Не удалось загрузить историю — повторю автоматически.' : 'У этого аккаунта пока нет транзакций.');
   else if (state.loadingHistory) setFeedState(`Загрузка… (${n}${total ? ' из ' + total : ''})`);
-  else setFeedState(state.resumeToken ? `Показано ${n} из ${total ?? '?'} транзакций` : `Вся история: ${n} транзакций`);
+  else {
+    const word = (k) => plural(k, ['транзакция', 'транзакции', 'транзакций']);
+    setFeedState(state.resumeToken ? `Показано ${n} из ${total ?? '?'} ${word(total ?? 0)}` : `Вся история: ${n} ${word(n)}`);
+  }
 }
 
 async function loadHistory(gen, first) {
