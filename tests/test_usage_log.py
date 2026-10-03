@@ -1,5 +1,5 @@
-"""Usage log end to end, offline: api/track.py against a fake Upstash Redis, then tools/sync_wallets.py
-(the Excel table).
+"""Usage log end to end, offline: api/track.py against a fake Redis (Upstash REST and plain Redis over
+TCP), then tools/sync_wallets.py (the Excel table).
 
 Run:  python tests/test_usage_log.py
 """
@@ -10,6 +10,7 @@ import importlib.util
 import json
 import os
 import pathlib
+import socketserver
 import sys
 import tempfile
 import threading
@@ -88,6 +89,42 @@ class FakeRedis(http.server.BaseHTTPRequestHandler):
 
     def log_message(self, *a):
         pass
+
+
+RESP_PASSWORD = 'resp-pass'
+
+
+class FakeResp(socketserver.StreamRequestHandler):
+    """The same fake database, spoken over the Redis protocol (what REDIS_URL points to)."""
+    db = FakeRedis.db
+
+    def handle(self):
+        authed = False
+        while True:
+            line = self.rfile.readline()
+            if not line:
+                return
+            args = []
+            for _ in range(int(line[1:-2])):
+                n = int(self.rfile.readline()[1:-2])
+                args.append(self.rfile.read(n + 2)[:-2].decode())
+            if args[0] == 'AUTH':
+                authed = args[-1] == RESP_PASSWORD and (len(args) == 2 or args[1] == 'default')
+                self.wfile.write(b'+OK\r\n' if authed else b'-WRONGPASS invalid username-password pair\r\n')
+            elif not authed:
+                self.wfile.write(b'-NOAUTH Authentication required.\r\n')
+            else:
+                self.wfile.write(self.encode(FakeRedis.run(self, args)))
+
+    def encode(self, v):
+        if v is None:
+            return b'$-1\r\n'
+        if isinstance(v, int):
+            return b':%d\r\n' % v
+        if isinstance(v, list):
+            return b'*%d\r\n' % len(v) + b''.join(self.encode(x) for x in v)
+        b = str(v).encode()
+        return b'$%d\r\n' % len(b) + b + b'\r\n'
 
 
 NS = {'m': 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}
@@ -251,7 +288,7 @@ class UsageLogTest(unittest.TestCase):
             self.assertTrue(summary['Из них подключили кошелёк'].endswith('-> 1'))
             self.assertTrue(summary['Поисков всего'].endswith('-> 4'))
             # storage down: the last good table stays, with a note
-            sync.read_env = lambda: ('http://127.0.0.1:9', READ_TOKEN)
+            sync.connection = lambda: ('rest', 'http://127.0.0.1:9', READ_TOKEN)
             self.assertEqual(sync.main(), 2)
             book = read_xlsx(sync.OUT)
             self.assertIn('alice.near', [r[1] for r in book['Пользователи'][1:]])
@@ -269,6 +306,36 @@ class UsageLogTest(unittest.TestCase):
                 os.environ.update(saved)
             notes = [r[1] for r in read_xlsx(sync.OUT)['Сводка'] if r and len(r) > 1 and r[0] in ('Внимание', 'Настройка')]
             self.assertIn('Учёт ещё не подключён: нет доступа к базе.', notes)
+
+    def test_plain_redis_url_end_to_end(self):
+        resp = socketserver.ThreadingTCPServer(('127.0.0.1', 0), FakeResp)
+        threading.Thread(target=resp.serve_forever, daemon=True).start()
+        saved = {k: os.environ.pop(k) for k in ('KV_REST_API_URL', 'KV_REST_API_TOKEN')}
+        url = f'redis://default:{RESP_PASSWORD}@127.0.0.1:{resp.server_address[1]}'
+        try:
+            os.environ['STORAGE_REDIS_URL'] = url  # Vercel may add a prefix
+            self.assertEqual(self.track.storage_conf()[0], 'tcp')
+            self.assertEqual(self.post({'kind': 'connect', 'account': 'carol.near', 'wallet': 'Meteor Wallet'})[0], 204)
+            self.assertEqual(self.post({'kind': 'search', 'account': 'whale.near', 'by': 'carol.near'})[0], 204)
+            self.assertEqual(FakeRedis.db['cf:count']['search|carol.near|whale.near'], 1)
+            os.environ['STORAGE_REDIS_URL'] = url.replace(RESP_PASSWORD, 'wrong')
+            self.assertEqual(self.post({'kind': 'search', 'account': 'x.near'})[0], 502, 'a wrong password is an error, not a crash')
+            del os.environ['STORAGE_REDIS_URL']
+            sync = load('sync_wallets4', ROOT / 'tools' / 'sync_wallets.py')
+            with tempfile.TemporaryDirectory() as tmp:
+                tmp = pathlib.Path(tmp)
+                sync.OUT, sync.CACHE, sync.ENV_FILE = tmp / 'w.xlsx', tmp / 'c.json', tmp / '.wallets.env'
+                sync.ENV_FILE.write_text('# Redis\nREDIS_URL=' + url + '\nKV_REST_API_URL=\n', encoding='utf-8')
+                self.assertEqual(sync.main(), 0)
+                book = read_xlsx(sync.OUT)
+                carol = [r for r in book['Пользователи'][1:] if r[1] == 'carol.near'][0]
+                self.assertEqual(carol[2], 'Meteor Wallet')
+                self.assertEqual(carol[8], 'whale.near')
+        finally:
+            os.environ.pop('STORAGE_REDIS_URL', None)
+            os.environ.update(saved)
+            resp.shutdown()
+            resp.server_close()
 
     def test_xlsx_text_is_escaped(self):
         sync = load('sync_wallets3', ROOT / 'tools' / 'sync_wallets.py')

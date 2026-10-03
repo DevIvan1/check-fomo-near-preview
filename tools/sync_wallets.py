@@ -6,10 +6,11 @@ Sheets: «Пользователи» (wallets that signed in: connected a wallet
 Reads the usage log that api/track.py keeps in Upstash Redis. Windows Task Scheduler runs this every
 10 minutes (task "Check fomo - wallets"); it can also be run by hand:  python tools/sync_wallets.py
 
-Credentials go into tools/.wallets.env (never committed, never deployed):
-    KV_REST_API_URL=https://<your-db>.upstash.io
-    KV_REST_API_READ_ONLY_TOKEN=<read-only token>
-(the same names as in Vercel -> Storage -> your Upstash database -> .env.local; read-only is enough)
+The database address goes into tools/.wallets.env (never committed, never deployed), copied from
+Vercel -> Storage -> the database -> .env.local:
+    REDIS_URL=redis://default:<password>@<host>:<port>          (Redis / Redis Cloud)
+or, for Upstash:  KV_REST_API_URL=...  and  KV_REST_API_READ_ONLY_TOKEN=...  (a read-only token is enough)
+The connection code is shared with the site (api/track.py).
 """
 
 import datetime
@@ -17,10 +18,11 @@ import json
 import os
 import pathlib
 import sys
-import urllib.request
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / 'api'))
 from xlsx_lite import write_xlsx  # noqa: E402
+import track as storage  # noqa: E402  (the site's own storage code: REST or plain Redis)
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 OUT = ROOT / 'КОШЕЛЬКИ.xlsx'
@@ -39,26 +41,25 @@ def read_env():
             line = line.strip()
             if line and not line.startswith('#') and '=' in line:
                 k, v = line.split('=', 1)
-                env[k.strip()] = v.strip().strip('"').strip("'")
-    url = env.get('KV_REST_API_URL') or env.get('UPSTASH_REDIS_REST_URL')
-    token = (env.get('KV_REST_API_READ_ONLY_TOKEN') or env.get('KV_REST_API_TOKEN')
-             or env.get('UPSTASH_REDIS_REST_TOKEN'))
-    return (url.rstrip('/'), token) if url and token else (None, None)
+                v = v.strip().strip('"').strip("'")
+                if v:
+                    env[k.strip()] = v
+    # a read-only Upstash token is preferred where there is one
+    for name in list(env):
+        if name.endswith('KV_REST_API_READ_ONLY_TOKEN') and env[name]:
+            env[name.replace('_READ_ONLY', '')] = env[name]
+    return env
 
 
-def fetch(url, token):
+def connection():
+    return storage.storage_conf(read_env())
+
+
+def fetch(conf):
     cmds = [['ZREVRANGE', 'cf:last', 0, -1, 'WITHSCORES'], ['ZRANGE', 'cf:first', 0, -1, 'WITHSCORES'],
             ['HGETALL', 'cf:count'], ['HGETALL', 'cf:wallet']]
-    req = urllib.request.Request(url + '/pipeline', data=json.dumps(cmds).encode(), method='POST',
-                                 headers={'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json',
-                                          'User-Agent': 'check-fomo-sync'})
-    with urllib.request.urlopen(req, timeout=30) as r:
-        out = json.loads(r.read())
-    for item in out:
-        if isinstance(item, dict) and item.get('error'):
-            raise RuntimeError(item['error'])
     pairs = lambda flat: dict(zip(flat[0::2], flat[1::2])) if isinstance(flat, list) else {}
-    last, first, count, wallet = (pairs(x.get('result')) for x in out)
+    last, first, count, wallet = (pairs(x) for x in storage.pipeline(cmds, conf, timeout=30))
     return {'last': last, 'first': first, 'count': count, 'wallet': wallet}
 
 
@@ -189,16 +190,16 @@ def save(sheets, active=0):
 
 def main():
     now = datetime.datetime.now().replace(microsecond=0)
-    url, token = read_env()
-    if not url:
+    conf = connection()
+    if not conf:
         save(workbook([], [], now, note='Учёт ещё не подключён: нет доступа к базе.', setup=[
-            'Vercel -> проект -> Storage -> Create Database -> Upstash for Redis -> подключить к проекту.',
-            f'Создать файл {ENV_FILE} с двумя строками из вкладки .env.local базы:',
-            'KV_REST_API_URL=...   и   KV_REST_API_READ_ONLY_TOKEN=...']), active=2)  # open on the instructions
+            'Vercel -> проект -> Storage -> база Redis подключена к проекту (после подключения нужен Redeploy).',
+            f'Откройте файл {ENV_FILE} и впишите после REDIS_URL= адрес базы',
+            'из Vercel -> Storage -> база -> вкладка .env.local (строка REDIS_URL="redis://...").']), active=2)
         print('not configured')
         return 1
     try:
-        data = fetch(url, token)
+        data = fetch(conf)
     except Exception as e:  # keep showing the last good table
         cached = json.loads(CACHE.read_text(encoding='utf-8')) if CACHE.exists() else None
         note = f'Не удалось обновить в {now:%d.%m.%Y %H:%M}: {clean(e, 120)}'
