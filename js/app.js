@@ -1,21 +1,24 @@
 // UI + live polling loop.
 
-import { DEFAULT_SETTINGS, HISTORY_PAGE, POLL_PAGE, NEAR_ID, WNEAR, explorer } from './config.js?v=a142e7bf';
-import { normalizeAccount, shouldAlert, soundKind } from './rules.js?v=a142e7bf';
-import * as api from './api.js?v=a142e7bf';
-import * as tokens from './tokens.js?v=a142e7bf';
-import { analyzeTx } from './parser.js?v=a142e7bf';
-import { describe, tokenLinks } from './describe.js?v=a142e7bf';
-import { computePositions, positionRows, accountStats, periodSummary } from './positions.js?v=a142e7bf';
-import * as alerts from './alerts.js?v=a142e7bf';
+import { DEFAULT_SETTINGS, HISTORY_PAGE, POLL_PAGE, NEAR_ID, WNEAR, explorer } from './config.js?v=90330b4f';
+import { normalizeAccount, shouldAlert, soundKind } from './rules.js?v=90330b4f';
+import * as api from './api.js?v=90330b4f';
+import * as tokens from './tokens.js?v=90330b4f';
+import { analyzeTx } from './parser.js?v=90330b4f';
+import { describe, tokenLinks } from './describe.js?v=90330b4f';
+import { computePositions, positionRows, accountStats, periodSummary } from './positions.js?v=90330b4f';
+import * as alerts from './alerts.js?v=90330b4f';
 import {
   fmtNum, fmtUsd, fmtPct, relTime, fmtTime, fmtDateTime, dayLabel, toNumber, shortAccount,
   storageGet, storageSet, toDecimalString,
-} from './util.js?v=a142e7bf';
-import { t, tp, setLang, getLocale, applyStatic } from './i18n.js?v=a142e7bf';
+} from './util.js?v=90330b4f';
+import { t, tp, setLang, getLocale, applyStatic } from './i18n.js?v=90330b4f';
+import * as session from './session.js?v=90330b4f';
+import { FollowFeed } from './following.js?v=90330b4f';
 
 const $ = (sel) => document.querySelector(sel);
 const SETTINGS_KEY = 'nwm.settings.v1';
+const BRAND = 'Check fomo';
 const AUTO_HISTORY_PAGES = 3;
 // The tx API is rate-limited for anonymous clients, so it is not hammered every few seconds:
 // a cheap RPC balance check runs every `pollSec` (any tx signed by the wallet burns gas, incoming
@@ -44,6 +47,30 @@ async function listTxs(opts) {
   const r = await api.accountTxsBackup(state.account, { limit: opts.limit });
   state.source = 'backup';
   return r;
+}
+
+// Same as listTxs/fetchRaw for any account (used by the follow feed); never touches state.source.
+// Only transactions the wallet signed itself: its trades, not the payouts it receives.
+async function listTxsFor(account, limit) {
+  if (Date.now() >= txApiDownUntil) {
+    try {
+      return await api.accountTxs(account, { limit, signerOnly: true });
+    } catch {
+      txApiDownUntil = Date.now() + 60000;
+    }
+  }
+  return api.accountTxsBackup(account, { limit, signerOnly: true });
+}
+
+async function fetchRawFor(account, rows) {
+  if (Date.now() >= txApiDownUntil) {
+    try {
+      return await api.transactions(rows.map((r) => r.transaction_hash));
+    } catch {
+      txApiDownUntil = Date.now() + 60000;
+    }
+  }
+  return api.transactionsBackup(rows, account);
 }
 
 // Full transactions for history rows: FastNEAR first, RPC tx status when FastNEAR fails.
@@ -104,7 +131,18 @@ const state = {
   search: '',
   expanded: new Set(),
   pendingNew: 0,
+  followTab: 'activity',
 };
+
+const feed = new FollowFeed({
+  listTxs: listTxsFor,
+  fetchRaw: fetchRawFor,
+  viewAccount: (acc) => api.viewAccount(acc, { spread: true }),
+  analyze: (raw, acc) => analyzeTx(raw, acc),
+  enrich: (analyses) => enrich(analyses),
+  onUpdate: () => renderFollowPanel(),
+  onNewEvent: (ev) => onFollowEvent(ev),
+});
 
 // ---------------- DOM helpers ----------------
 
@@ -219,6 +257,7 @@ function fillSettingsForm() {
   f.lang.value = s.lang === 'ru' ? 'ru' : 'en';
   f.theme.value = s.theme || 'auto';
   f.sound.checked = s.sound;
+  f.followAlerts.checked = s.followAlerts !== false;
   f.volume.value = s.volume;
   f.alertLevel.value = s.alertLevel;
   f.alertMinNear.value = s.alertMinNear;
@@ -241,6 +280,7 @@ function onSettingsChange(e) {
   s.theme = ['light', 'dark'].includes(f.theme.value) ? f.theme.value : 'auto';
   applyTheme(s.theme);
   s.sound = f.sound.checked;
+  s.followAlerts = f.followAlerts.checked;
   s.volume = Math.min(1, Math.max(0, Number(f.volume.value) || 0));
   s.alertLevel = f.alertLevel.value;
   s.alertMinNear = Math.max(0, Number(f.alertMinNear.value) || 0);
@@ -258,8 +298,11 @@ function applyLanguage() {
   setLang(state.settings.lang);
   applyStatic();
   renderTopButtons();
-  alerts.setBaseTitle(state.account ? `${state.account} · Wallet Monitor` : 'Wallet Monitor');
+  alerts.setBaseTitle(state.account ? `${state.account} · ${BRAND}` : BRAND);
+  renderAuth();
+  renderFollowPanel();
   if (state.account) {
+    renderAccountActions();
     $('#accountLinks').querySelector('.link-btn').textContent = t('copyAddress');
     recompute();
     renderFeed();
@@ -300,7 +343,7 @@ function showLanding({ push = false } = {}) {
   $('#app').hidden = true;
   $('#landing').hidden = false;
   $('#feed').replaceChildren();
-  alerts.setBaseTitle('Wallet Monitor');
+  alerts.setBaseTitle(BRAND);
   alerts.clearUnread();
   const input = $('#landingInput');
   input.value = '';
@@ -317,13 +360,15 @@ async function switchAccount(acc, { push = true } = {}) {
   updateAudioHint();
   $('#accountInput').value = acc;
   $('#accountId').textContent = acc;
+  renderAccountActions();
+  loadAccountIdent(acc);
   const links = $('#accountLinks');
   links.replaceChildren(
     el('a', { href: explorer.account(acc), target: '_blank', rel: 'noopener noreferrer' }, 'NearBlocks'),
     el('a', { href: explorer.accountAlt(acc), target: '_blank', rel: 'noopener noreferrer' }, 'Pikespeak'),
     el('button', { class: 'link-btn', type: 'button', onclick: () => copyText(acc) }, t('copyAddress')),
   );
-  alerts.setBaseTitle(`${acc} · Wallet Monitor`);
+  alerts.setBaseTitle(`${acc} · ${BRAND}`);
   alerts.clearUnread();
   $('#feed').replaceChildren();
   $('#balanceNear').textContent = '—';
@@ -715,6 +760,7 @@ function refreshLiveLines(tokenSet) {
   }
   renderPositions();
   renderHoldings();
+  renderPnlBoard();
   if (state.filter === 'summary') renderSummary();
 }
 
@@ -722,6 +768,7 @@ function refreshLiveLines(tokenSet) {
 
 function onTick() {
   const now = Date.now();
+  feed.tick(now);
   if (state.initialDone && !state.historyLoaded) {
     if (!state.loadingHistory && now >= state.nextPollAt) {
       // The first history page failed: retry it (with growing pauses) instead of polling,
@@ -751,7 +798,7 @@ function onTick() {
 
 function startTicker() {
   try {
-    const w = new Worker(new URL('./ticker.js?v=a142e7bf', import.meta.url));
+    const w = new Worker(new URL('./ticker.js?v=90330b4f', import.meta.url));
     w.onmessage = onTick;
     w.postMessage({ cmd: 'start', ms: 500 });
   } catch {
@@ -1085,6 +1132,7 @@ function renderSummary() {
 }
 
 function renderSide() {
+  renderPnlBoard();
   renderPositions();
   renderHoldings();
   renderStats();
@@ -1134,6 +1182,7 @@ function renderPositions() {
 
 function renderHoldings() {
   const box = $('#holdings');
+  if (!box) return; // the Wallet panel was replaced by the follow feed
   const frag = document.createDocumentFragment();
   const usd = tokens.getNearUsd();
   if (state.balance !== null) {
@@ -1333,6 +1382,272 @@ function bindUI() {
   setInterval(updateRelativeTimes, 15000);
 }
 
+// ---------------- wallet connection, profile, follows ----------------
+
+function returnPath() {
+  return location.search ? `./${location.search}` : './';
+}
+
+function connectUrl({ followAcc = null, logout = false } = {}) {
+  const u = new URL('connect.html', location.href);
+  u.searchParams.set('return', returnPath());
+  if (followAcc) u.searchParams.set('follow', followAcc);
+  if (logout) u.searchParams.set('logout', '1');
+  return u.href;
+}
+
+function avatarInto(box, account, image) {
+  box.replaceChildren();
+  const safe = image ? tokens.safeIcon(image) : null;
+  if (safe) {
+    const img = el('img', { src: safe, alt: '', loading: 'lazy', referrerpolicy: 'no-referrer' });
+    img.addEventListener('error', () => {
+      img.remove();
+      box.textContent = (account || '?').replace(/[^a-z0-9]/gi, '').slice(0, 2);
+    });
+    box.append(img);
+  } else {
+    box.textContent = (account || '?').replace(/[^a-z0-9]/gi, '').slice(0, 2);
+  }
+}
+
+function avatarEl(account, cls = 'avatar') {
+  const box = el('span', { class: cls, 'aria-hidden': 'true' });
+  avatarInto(box, account, null);
+  session.nearSocialProfile(account, api.viewFunction).then((p) => p.image && avatarInto(box, account, p.image));
+  return box;
+}
+
+function syncSession() {
+  const s = session.getSession();
+  const owner = s?.accountId || null;
+  feed.setFollows(owner, owner ? session.getFollows(owner) : []);
+  renderAuth();
+  if (state.account) renderAccountActions();
+  renderFollowPanel();
+}
+
+function renderAuth() {
+  const s = session.getSession();
+  $('#connectTop').hidden = !!s;
+  const chip = $('#profileChip');
+  chip.hidden = !s;
+  if (!s) return;
+  $('#profileName').textContent = shortAccount(s.accountId);
+  chip.title = `${t('yourProfile')}: ${s.accountId}`;
+  const box = $('#profileAvatar');
+  if (box.dataset.acc !== s.accountId) {
+    box.dataset.acc = s.accountId;
+    avatarInto(box, s.accountId, null);
+    session.nearSocialProfile(s.accountId, api.viewFunction).then((p) => {
+      if (p.image && box.dataset.acc === s.accountId) avatarInto(box, s.accountId, p.image);
+    });
+  }
+}
+
+function renderAccountActions() {
+  const box = $('#accountActions');
+  const acc = state.account;
+  if (!box || !acc) return;
+  const s = session.getSession();
+  if (s && s.accountId === acc) {
+    box.replaceChildren(
+      el('span', { class: 'you-badge' }, t('you')),
+      el('a', { class: 'mini-btn', href: connectUrl({ logout: true }) }, t('disconnect')),
+    );
+    return;
+  }
+  const on = !!s && session.isFollowing(s.accountId, acc);
+  const btn = el('button', {
+    type: 'button', class: `btn follow-btn${on ? ' on' : ''}`, title: on ? t('unfollow') : '',
+    onclick: () => {
+      const cur = session.getSession();
+      if (!cur) {
+        location.href = connectUrl({ followAcc: acc });
+        return;
+      }
+      if (session.isFollowing(cur.accountId, acc)) {
+        session.unfollow(cur.accountId, acc);
+        toast(t('unfollowed', shortAccount(acc)));
+      } else {
+        session.follow(cur.accountId, acc);
+        toast(t('followed', shortAccount(acc)));
+      }
+    },
+  }, on ? t('following') : t('follow'));
+  box.replaceChildren(btn);
+}
+
+function loadAccountIdent(acc) {
+  const box = $('#accountAvatar');
+  const name = $('#accountName');
+  box.dataset.acc = acc;
+  avatarInto(box, acc, null);
+  name.textContent = '';
+  session.nearSocialProfile(acc, api.viewFunction).then((p) => {
+    if (box.dataset.acc !== acc) return;
+    if (p.image) avatarInto(box, acc, p.image);
+    name.textContent = p.name || '';
+  });
+}
+
+// PnL tiles for 24h / 7d / 30d on every wallet page (click opens the Summary tab).
+function renderPnlBoard() {
+  const box = $('#pnlBoard');
+  if (!box) return;
+  if (!state.account || !state.items.size) {
+    box.replaceChildren();
+    return;
+  }
+  const analyses = [...state.items.values()].map((i) => i.a);
+  const usd = tokens.getNearUsd();
+  const live = { decimals: tokens.decimals, balance: liveBalance, priceNear: tokens.priceNear, isOpen: positionOpen };
+  const frag = document.createDocumentFragment();
+  for (const [days, key] of [[1, 'sum.24h'], [7, 'sum.7d'], [30, 'sum.30d']]) {
+    const s = periodSummary(analyses, state.positions, Date.now() - days * 86400000, live);
+    const trades = s.buys + s.sells;
+    const tone = s.total > 0 ? 'up' : s.total < 0 ? 'down' : '';
+    const sub = trades
+      ? [s.pct !== null ? fmtPct(s.pct) : null, usd ? `${s.total >= 0 ? '+' : ''}${fmtUsd(s.total * usd)}` : null, `${trades} ${tp('tradeWord', trades)}`].filter(Boolean).join(' · ')
+      : t('noTradesShort');
+    frag.append(el('button', {
+      type: 'button', class: 'pnl-tile', title: t('openSummary'),
+      onclick: () => {
+        state.settings.summaryDays = days;
+        saveSettings();
+        state.filter = 'summary';
+        document.querySelectorAll('#tabs button').forEach((x) => x.setAttribute('aria-selected', String(x.dataset.filter === 'summary')));
+        renderFeed();
+        $('#summaryView').scrollIntoView({ behavior: 'smooth', block: 'start' });
+      },
+    },
+    el('span', { class: 'pt-label' }, `PnL · ${t(key)}`),
+    el('span', { class: `pt-value ${tone}` }, trades ? `${fmtNum(s.total, { sign: true })} NEAR` : '—'),
+    el('span', { class: 'pt-sub' }, sub)));
+  }
+  box.replaceChildren(frag);
+}
+
+function ctxFollow() {
+  return { ...describeCtx(), positionOpen: () => null, positionStats: () => null };
+}
+
+function renderFollowPanel() {
+  const body = $('#followBody');
+  if (!body) return;
+  const s = session.getSession();
+  const tabs = $('#followTabs');
+  document.querySelectorAll('#followTabs button').forEach((b) => b.classList.toggle('on', b.dataset.ftab === state.followTab));
+  const follows = s ? session.getFollows(s.accountId) : [];
+  $('#followCount').textContent = follows.length ? String(follows.length) : '';
+  tabs.hidden = !s;
+  if (!s) {
+    body.replaceChildren(el('div', { class: 'follow-empty' },
+      el('span', {}, t('followConnectHint')),
+      el('a', { class: 'btn follow-btn', href: connectUrl() }, t('connect'))));
+    return;
+  }
+  if (state.followTab === 'wallets') {
+    renderFollowWallets(body, s, follows);
+    return;
+  }
+  if (!follows.length) {
+    body.replaceChildren(el('div', { class: 'follow-empty' }, el('span', {}, t('followEmptyHint'))));
+    return;
+  }
+  const events = feed.list(30);
+  if (!events.length) {
+    body.replaceChildren(el('div', { class: 'follow-empty' }, el('span', {}, feed.loading ? t('followLoading') : t('followNoTrades'))));
+    return;
+  }
+  const ctx = ctxFollow();
+  const list = el('div', { class: 'ff-list' });
+  for (const ev of events) {
+    let d;
+    try {
+      d = describe(ev.a, ctx);
+    } catch {
+      continue;
+    }
+    const isNew = ev.live && Date.now() - ev.seenAt < 6000;
+    list.append(el('div', { class: `ff-item tone-${d.tone}${isNew ? ' is-new' : ''}` },
+      d.icon.token ? tokenIcon(d.icon.token, 'pos-icon') : el('div', { class: 'pos-icon', 'aria-hidden': 'true' }, d.icon.glyph),
+      el('div', {},
+        el('div', { class: 'ff-head' },
+          el('button', { type: 'button', class: 'ff-acc', title: ev.account, onclick: () => switchAccount(ev.account) }, shortAccount(ev.account)),
+          el('span', { class: 'rel', 'data-ts': ev.a.timestampMs }, relTime(ev.a.timestampMs)),
+          el('a', { class: 'ff-tx', href: explorer.tx(ev.hash), target: '_blank', rel: 'noopener noreferrer', title: 'NearBlocks' }, '↗')),
+        el('div', { class: 'ff-title' }, d.title),
+        d.subtitle ? el('div', { class: 'ff-sub' }, d.subtitle) : null)));
+  }
+  body.replaceChildren(list);
+}
+
+function renderFollowWallets(body, s, follows) {
+  const rows = el('div', {});
+  if (!follows.length) rows.append(el('div', { class: 'follow-empty' }, el('span', {}, t('followEmptyHint'))));
+  for (const f of follows) {
+    rows.append(el('div', { class: 'fw-row' },
+      avatarEl(f.account, 'avatar'),
+      el('div', {},
+        el('button', { type: 'button', class: 'fw-name', title: f.account, onclick: () => switchAccount(f.account) }, shortAccount(f.account)),
+        el('div', { class: 'fw-meta' }, t('followingSince', relTime(f.since)))),
+      el('div', { class: 'fw-actions' },
+        el('button', { type: 'button', class: 'mini-btn', onclick: () => session.unfollow(s.accountId, f.account) }, t('unfollow')))));
+  }
+  const importBtn = el('button', { type: 'button', class: 'mini-btn' }, t('importSocial'));
+  importBtn.addEventListener('click', async () => {
+    importBtn.disabled = true;
+    importBtn.textContent = t('importing');
+    try {
+      const list = await session.nearSocialFollows(s.accountId, api.viewFunction);
+      const added = session.followMany(s.accountId, list);
+      toast(list.length ? t('imported', { added, total: list.length }) : t('importNone'));
+    } catch {
+      toast(t('netErrorRetry'));
+    } finally {
+      importBtn.disabled = false;
+      importBtn.textContent = t('importSocial');
+    }
+  });
+  body.replaceChildren(rows, el('div', { class: 'follow-foot' }, importBtn));
+}
+
+let lastFollowSound = 0;
+function onFollowEvent(ev) {
+  const st = state.settings;
+  if (st.followAlerts === false || ev.a.kind !== 'trade') return;
+  if (ev.account === state.account) return; // the open wallet already alerts from its own feed
+  if (!shouldAlert(ev.a, { ...st, alertLevel: 'trades' })) return;
+  const d = describe(ev.a, ctxFollow());
+  const headline = `${shortAccount(ev.account)}: ${d.title}`;
+  if (st.sound && Date.now() - lastFollowSound > 1200) {
+    if (alerts.playSound(soundKind(ev.a), st.volume)) lastFollowSound = Date.now();
+  }
+  if (document.hidden) alerts.bumpUnread(headline);
+  if (st.notify) {
+    const icon = d.icon.token ? tokens.safeIcon(tokens.meta(d.icon.token)?.icon || '') : null;
+    alerts.showNotification(headline, d.subtitle || '', `${ev.hash}|${ev.account}`, icon && icon.startsWith('https://') ? icon : undefined);
+  }
+  setTimeout(renderFollowPanel, 6500); // drop the "new" highlight
+}
+
+function bindSocial() {
+  $('#connectTop').addEventListener('click', () => {
+    location.href = connectUrl();
+  });
+  $('#profileChip').addEventListener('click', () => {
+    const s = session.getSession();
+    if (s) switchAccount(s.accountId);
+  });
+  $('#followTabs').addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-ftab]');
+    if (!b) return;
+    state.followTab = b.dataset.ftab;
+    renderFollowPanel();
+  });
+}
+
 function setupSidePanel() {
   // Collapsed on phones (so the feed comes first), always open on wide screens.
   const wrap = $('#sideWrap');
@@ -1376,6 +1691,9 @@ function init() {
   const debug = new URLSearchParams(location.search).has('debug'); // read before routing rewrites the URL
   setupSidePanel();
   bindUI();
+  bindSocial();
+  session.onChange(syncSession);
+  syncSession();
   startTicker();
   route();
   window.__nwmReady = true; // seen by boot.js: the app started

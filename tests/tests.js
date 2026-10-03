@@ -1,22 +1,27 @@
 // Browser test suite. Open tests/index.html through any static server.
 
-import { analyzeTx, parseLog, statusKind, failureMessage, fromRpcTxStatus } from '../js/parser.js?v=a142e7bf';
-import { describe, humanError } from '../js/describe.js?v=a142e7bf';
-import { computePositions, positionRows, accountStats, periodSummary } from '../js/positions.js?v=a142e7bf';
-import { normalizeAccount, shouldAlert, nearSize, soundKind } from '../js/rules.js?v=a142e7bf';
-import { toDecimalString, toNumber, fmtNum, big, shortHash, shortAccount, fmtPct, relTime } from '../js/util.js?v=a142e7bf';
-import { safeIcon, dclPrice, routePrice } from '../js/tokens.js?v=a142e7bf';
-import { NEAR_ID } from '../js/config.js?v=a142e7bf';
-import { setLang, t, tp, dictKeys } from '../js/i18n.js?v=a142e7bf';
+import { analyzeTx, parseLog, statusKind, failureMessage, fromRpcTxStatus } from '../js/parser.js?v=90330b4f';
+import { describe, humanError } from '../js/describe.js?v=90330b4f';
+import { computePositions, positionRows, accountStats, periodSummary } from '../js/positions.js?v=90330b4f';
+import { normalizeAccount, shouldAlert, nearSize, soundKind } from '../js/rules.js?v=90330b4f';
+import { toDecimalString, toNumber, fmtNum, big, shortHash, shortAccount, fmtPct, relTime } from '../js/util.js?v=90330b4f';
+import { safeIcon, dclPrice, routePrice } from '../js/tokens.js?v=90330b4f';
+import { NEAR_ID } from '../js/config.js?v=90330b4f';
+import * as session from '../js/session.js?v=90330b4f';
+import { FollowFeed, isFeedEvent } from '../js/following.js?v=90330b4f';
+import { setLang, t, tp, dictKeys } from '../js/i18n.js?v=90330b4f';
 
 const ACC = 'hotfrog2879.near';
 const results = [];
+const pendingTests = [];
+const fail = (name, e) => results.push({ name, ok: false, err: e && e.message ? e.message : String(e) });
 const test = (name, fn) => {
   try {
-    fn();
-    results.push({ name, ok: true });
+    const r = fn();
+    if (r && typeof r.then === 'function') pendingTests.push(r.then(() => results.push({ name, ok: true }), (e) => fail(name, e)));
+    else results.push({ name, ok: true });
   } catch (e) {
-    results.push({ name, ok: false, err: e && e.message ? e.message : String(e) });
+    fail(name, e);
   }
 };
 const show = (v) => (typeof v === 'bigint' ? v.toString() + 'n' : JSON.stringify(v));
@@ -648,6 +653,107 @@ async function main() {
     eq(t('tab.trades'), 'Trades');
   });
 
+  // ---------- Check fomo: session, follows, NEAR Social, follow feed ----------
+  test('подписки: follow / unfollow / импорт, без дублей и без подписки на себя', () => {
+    const owner = 'cf-test-owner.near';
+    const key = 'cf.follows.v1.' + owner;
+    localStorage.removeItem(key);
+    try {
+      eq(session.follow(owner, 'alice.near'), true);
+      eq(session.follow(owner, 'alice.near'), false, 'дубль');
+      eq(session.follow(owner, owner), false, 'на себя');
+      eq(session.isFollowing(owner, 'alice.near'), true);
+      eq(session.followMany(owner, ['alice.near', 'bob.near', owner, 'carol.near']), 2);
+      eq(session.getFollows(owner).map((x) => x.account).join(','), 'bob.near,carol.near,alice.near');
+      eq(session.followMany(owner, Array.from({ length: 80 }, (_, i) => `bulk${i}.near`)), 50, 'импорт не больше 50 за раз');
+      for (let i = 0; i < 80; i++) session.unfollow(owner, `bulk${i}.near`);
+      eq(session.unfollow(owner, 'bob.near'), true);
+      eq(session.unfollow(owner, 'bob.near'), false);
+      eq(session.getFollows(owner).length, 2);
+      eq(session.getFollows(null).length, 0);
+    } finally {
+      localStorage.removeItem(key);
+    }
+  });
+  test('сессия: сохранение и сброс (настоящая сессия восстанавливается)', () => {
+    const saved = localStorage.getItem('cf.session.v1');
+    try {
+      session.setSession({ accountId: 'cf-test.near', wallet: 'HOT Wallet' });
+      eq(session.getSession().accountId, 'cf-test.near');
+      eq(session.getSession().wallet, 'HOT Wallet');
+      eq(session.getSession().watchOnly, false);
+      session.clearSession();
+      eq(session.getSession(), null);
+      localStorage.setItem('cf.session.v1', JSON.stringify({ accountId: '' }));
+      eq(session.getSession(), null, 'пустой аккаунт — нет сессии');
+    } finally {
+      if (saved === null) localStorage.removeItem('cf.session.v1');
+      else localStorage.setItem('cf.session.v1', saved);
+    }
+  });
+  test('NEAR Social: разбор подписок и аватара', () => {
+    const json = { 'root.near': { graph: { follow: { 'mob.near': '', 'bad name!': '', 'x.near': '' } } } };
+    eq(session.parseSocialFollows(json, 'root.near').join(','), 'mob.near,x.near');
+    eq(session.parseSocialFollows({}, 'root.near').length, 0);
+    eq(session.socialImageUrl({ url: 'https://example.com/a.png' }), 'https://example.com/a.png');
+    eq(session.socialImageUrl({ url: 'javascript:alert(1)' }), null);
+    eq(session.socialImageUrl({ ipfs_cid: 'bafkrei123' }), 'https://ipfs.near.social/ipfs/bafkrei123');
+    eq(session.socialImageUrl({ ipfs_cid: 'x/../y' }), null);
+    eq(session.socialImageUrl(null), null);
+  });
+  test('лента подписок: только сделки и переводы', () => {
+    eq(isFeedEvent(A('BUY_SINGULARTY')), true);
+    eq(isFeedEvent(A('SELL_BATMAN')), true);
+    eq(isFeedEvent(A('FUNDING')), true);
+    eq(isFeedEvent(A('PAYOUT_NEAR')), false);
+    eq(isFeedEvent(A('STORAGE_SINGULARTY')), false);
+    eq(isFeedEvent(A('CLAIM_FEES')), false);
+    eq(isFeedEvent(null), false);
+  });
+  test('лента подписок: загрузка, живая сделка с оповещением, отписка', async () => {
+    const byHash = Object.fromEntries(Object.values(fx).filter((x) => x.transaction).map((x) => [x.transaction.hash, x]));
+    const row = (key) => ({ transaction_hash: fx[key].transaction.hash, tx_block_height: fx[key].execution_outcome.block_height });
+    let rows = [row('BUY_SINGULARTY'), row('PAYOUT_NEAR'), row('STORAGE_SINGULARTY')];
+    let amount = '100';
+    const fresh = new Set();
+    const alerted = [];
+    let updates = 0;
+    const feed = new FollowFeed({
+      listTxs: async () => ({ account_txs: rows }),
+      fetchRaw: async (acc, rs) => rs.map((r) => byHash[r.transaction_hash]),
+      viewAccount: async () => ({ amount, locked: '0', storage_usage: 1 }),
+      analyze: (raw, acc) => {
+        const a = analyzeTx(raw, acc);
+        if (fresh.has(a.hash)) a.timestampMs = Date.now() - 5000; // pretend it just happened
+        return a;
+      },
+      enrich: async () => {},
+      onUpdate: () => { updates += 1; },
+      onNewEvent: (ev) => alerted.push(ev),
+    });
+    feed.setFollows('me.near', [{ account: ACC, since: 0 }]);
+    eq(feed.loading, true);
+    await feed.tick();
+    eq(feed.loading, false);
+    eq(feed.list().length, 1, 'после загрузки в ленте только сделка');
+    eq(feed.list()[0].a.kind, 'trade');
+    eq(alerted.length, 0, 'история не вызывает оповещений');
+    await feed.tick(Date.now() + 3000); // first balance check: remembers the balance
+    rows = [row('SELL_BATMAN'), ...rows];
+    fresh.add(fx.SELL_BATMAN.transaction.hash);
+    amount = '250'; // balance changed -> refresh
+    await feed.tick(Date.now() + 6000);
+    eq(feed.list().length, 2);
+    eq(feed.list()[0].a.trade.side, 'sell', 'новая сделка сверху');
+    eq(alerted.length, 1, 'оповещение о живой сделке');
+    eq(alerted[0].account, ACC);
+    ok(updates > 0);
+    feed.setFollows('me.near', []);
+    eq(feed.list().length, 0, 'отписка убирает сделки');
+    eq(feed.size, 0);
+  });
+
+  await Promise.all(pendingTests);
   render();
 }
 

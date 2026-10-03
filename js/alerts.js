@@ -40,32 +40,57 @@ export async function unlockAudio() {
   return ok;
 }
 
+// [frequency Hz, start offset s]. Three-note phrases, so an alert is noticeable but short.
 const PATTERNS = {
-  buy: [[659.25, 0], [987.77, 0.13]],
-  sell: [[987.77, 0], [659.25, 0.13]],
-  info: [[783.99, 0]],
-  warn: [[880, 0], [880, 0.16], [880, 0.32]],
+  buy: [[659.25, 0], [830.61, 0.16], [987.77, 0.32]],
+  sell: [[987.77, 0], [830.61, 0.16], [659.25, 0.32]],
+  info: [[783.99, 0], [1046.5, 0.18]],
+  follow: [[880, 0], [1108.73, 0.14], [1318.51, 0.28]],
+  warn: [[880, 0], [880, 0.2], [880, 0.4]],
 };
+const NOTE_SEC = 0.7; // each note rings out ~0.7 s
 
-export function playSound(kind = 'info', volume = 0.6) {
+let master = null;
+function output(c) {
+  if (!master) {
+    // A compressor lets the tone be loud without clipping on laptop speakers.
+    const comp = c.createDynamicsCompressor();
+    comp.threshold.value = -18;
+    comp.knee.value = 12;
+    comp.ratio.value = 6;
+    comp.attack.value = 0.003;
+    comp.release.value = 0.25;
+    master = c.createGain();
+    master.gain.value = 1.6;
+    master.connect(comp).connect(c.destination);
+  }
+  return master;
+}
+
+export function playSound(kind = 'info', volume = 0.8) {
   const c = audio();
   if (!c || c.state !== 'running') return false;
   const notes = PATTERNS[kind] || PATTERNS.info;
   const t0 = c.currentTime + 0.02;
-  const vol = Math.max(0, Math.min(1, Number(volume) || 0)) * 0.35;
+  const vol = Math.max(0, Math.min(1, Number(volume) || 0)) * 0.9;
   if (vol < 0.001) return false; // exponential ramps cannot target 0
+  const out = output(c);
   for (const [freq, offset] of notes) {
-    const osc = c.createOscillator();
-    const gain = c.createGain();
-    osc.type = 'sine';
-    osc.frequency.value = freq;
     const s = t0 + offset;
-    gain.gain.setValueAtTime(0.0001, s);
-    gain.gain.exponentialRampToValueAtTime(vol, s + 0.015);
-    gain.gain.exponentialRampToValueAtTime(0.0001, s + 0.32);
-    osc.connect(gain).connect(c.destination);
-    osc.start(s);
-    osc.stop(s + 0.35);
+    // A sine plus a quieter triangle an octave up sounds fuller than a bare sine.
+    for (const [type, mult, level] of [['sine', 1, 1], ['triangle', 2, 0.25]]) {
+      const osc = c.createOscillator();
+      const gain = c.createGain();
+      osc.type = type;
+      osc.frequency.value = freq * mult;
+      gain.gain.setValueAtTime(0.0001, s);
+      gain.gain.exponentialRampToValueAtTime(vol * level, s + 0.012);
+      gain.gain.exponentialRampToValueAtTime(vol * level * 0.35, s + 0.18);
+      gain.gain.exponentialRampToValueAtTime(0.0001, s + NOTE_SEC);
+      osc.connect(gain).connect(out);
+      osc.start(s);
+      osc.stop(s + NOTE_SEC + 0.05);
+    }
   }
   return true;
 }
@@ -125,7 +150,7 @@ function renderTitle() {
 }
 
 function setFavicon(dot) {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="1" y="1" width="22" height="22" rx="6" fill="#1c1c1e"/><path d="M5 12.5h3l2.2-5 3.6 9.5 2.2-4.5H19" fill="none" stroke="#f5f5f7" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>${dot ? '<circle cx="19.5" cy="4.5" r="4.5" fill="#d9534f" stroke="#fff" stroke-width="1.2"/>' : ''}</svg>`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="1" y="1" width="22" height="22" rx="6" fill="#1c1c1e"/><path d="M5.5 12.5l4 4L18.5 7.5M14 7.5h4.5V12" fill="none" stroke="#f5f5f7" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>${dot ? '<circle cx="19.5" cy="4.5" r="4.5" fill="#d9534f" stroke="#fff" stroke-width="1.2"/>' : ''}</svg>`;
   let link = document.querySelector('link[rel="icon"]');
   if (!link) {
     link = document.createElement('link');

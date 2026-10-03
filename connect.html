@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>Connect wallet · Check fomo</title>
+  <meta name="color-scheme" content="light dark">
+  <!-- Wallets run in sandboxed iframes that inherit this page's policy, so only the basics are locked here;
+       the main app keeps its strict policy and never loads wallet code. -->
+  <meta http-equiv="Content-Security-Policy" content="object-src 'none'; base-uri 'none'">
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <script src="js/boot.js?v=90330b4f"></script>
+  <link rel="stylesheet" href="css/style.css?v=90330b4f">
+</head>
+<body class="connect-page">
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="./">
+        <svg class="mark" viewBox="0 0 24 24" aria-hidden="true"><rect class="mark-bg" x="1" y="1" width="22" height="22" rx="6"/><path class="mark-line" d="M5.5 12.5l4 4L18.5 7.5"/><path class="mark-line" d="M14 7.5h4.5V12"/></svg>
+        <span class="brand-name">Check fomo</span>
+      </a>
+    </div>
+  </header>
+
+  <main class="connect-wrap">
+    <section class="connect-card">
+      <h1 class="connect-title" data-i18n="cn.title">Connect your NEAR wallet</h1>
+      <p class="muted" data-i18n="cn.sub">Sign in with HOT, Meteor, Intear, MyNearWallet and other NEAR wallets. Check fomo only reads your address: no transactions, no approvals.</p>
+      <button class="btn connect-btn" id="connectBtn" type="button" data-i18n="cn.button">Connect wallet</button>
+      <p class="connect-status muted small" id="connectStatus" role="status"></p>
+
+      <div class="connect-or muted small" data-i18n="cn.or">or use without a wallet</div>
+      <form class="landing-form" id="manualForm" autocomplete="off">
+        <label class="sr-only" for="manualInput" data-i18n="cn.manual">Enter your NEAR account</label>
+        <input id="manualInput" class="landing-input" spellcheck="false" autocapitalize="off" placeholder="your-account.near">
+        <button class="btn btn-ghost" type="submit" data-i18n="cn.continue">Continue</button>
+      </form>
+      <a class="connect-back muted small" id="backLink" href="./" data-i18n="cn.back">← Back</a>
+    </section>
+  </main>
+
+  <script type="module" src="js/connect.js?v=90330b4f"></script>
+</body>
+</html>

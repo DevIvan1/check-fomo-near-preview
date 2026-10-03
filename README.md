@@ -1,12 +1,24 @@
-# NEAR Wallet Monitor
+# Check fomo
 
 **English** · [Русский](README.ru.md)
 
-A live, post-style feed of everything a NEAR wallet does: buys, sells, transfers, holder payouts and contract registrations. Every post links its transaction hash.
+Follow NEAR traders live, FomoApp-style. Check fomo shows every buy, sell and transfer of any NEAR wallet as a post with its transaction hash. It adds PnL boards for 24h, 7d and 30d, lets you connect your wallet and follow traders, and shows a live feed of the wallets you follow with loud sound alerts.
 
 The home page is just a search box. A wallet opens when you enter its address, and you can bookmark a wallet with `?account=name.near` in the URL.
 
 Created by [@Checker1crypto](https://x.com/Checker1crypto).
+
+## Social: wallet, profile, follows
+
+- **Connect wallet.** HOT, Meteor, Intear, MyNearWallet, Ledger, OKX, Nightly and other NEAR wallets through the official lightweight [NEAR Connect](https://github.com/hot-dao/near-selector). Check fomo only reads your address: there are no transactions and nothing to approve. You can also continue without a wallet by entering your account. Wallet code runs only on a separate `connect.html` page; the main app keeps its strict Content-Security-Policy.
+- **Profile.** Every wallet page shows PnL tiles for 24h, 7 days and 30 days (click one to open the detailed summary), plus the NEAR Social name and avatar when the wallet has them. Your own page is marked "You" and has Disconnect.
+- **Follow.** Every wallet page has a Follow button; if you are not connected, it signs you in and follows right after. Follows are kept in this browser per connected account, and you can import your follows from NEAR Social (`social.near`, up to 50 at a time).
+- **Following feed** (bottom right) — live trades of the wallets you follow:
+  - **Activity** tab: the trades, with sound and desktop alerts for fresh trades (can be switched off in Settings);
+  - **Wallets** tab: manage the followed wallets.
+
+  Each followed wallet gets one cheap balance check in turn, and its transactions are read only when the balance changes, plus a safety refresh every 2 minutes. This keeps the feed within public API limits even with dozens of follows.
+- **Louder, longer alerts.** Three-note sounds through a compressor: rising for buys, falling for sells.
 
 ## Features
 
@@ -51,7 +63,7 @@ python -m http.server 8000
 ```
 
 - **App:** http://localhost:8000/
-- **Tests:** http://localhost:8000/tests/ (55 tests: parser, both languages, PnL and summary, backup-source conversion, alert rules, XSS safety). `tests/` and `tools/` are not deployed to Vercel (see `.vercelignore`).
+- **Tests:** http://localhost:8000/tests/ (60 tests: parser, both languages, PnL and summary, backup-source conversion, alert rules, XSS safety). `tests/` and `tools/` are not deployed to Vercel (see `.vercelignore`).
 
 Before every commit, stamp the module versions:
 

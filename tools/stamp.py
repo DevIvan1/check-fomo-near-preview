@@ -23,7 +23,7 @@ def write(path, text):
         f.write(text)
 
 
-sources = sorted([*ROOT.glob("js/*.js"), ROOT / "css" / "style.css", ROOT / "index.html"])
+sources = sorted([*ROOT.glob("js/*.js"), ROOT / "css" / "style.css", ROOT / "index.html", ROOT / "connect.html"])
 digest = hashlib.sha1()
 for path in sources:
     digest.update(VER.sub("", read(path)).encode("utf-8"))
@@ -39,7 +39,7 @@ for path in [*sorted(ROOT.glob("js/*.js")), ROOT / "tests" / "tests.js"]:
         changed.append(path.relative_to(ROOT))
 
 page_ref = re.compile(r"""((?:href|src)=")((?:css|js)/[a-z0-9_-]+\.(?:css|js)|tests\.js)(?:\?v=[0-9a-z]+)?(")""")
-for path in [ROOT / "index.html", ROOT / "tests" / "index.html"]:
+for path in [ROOT / "index.html", ROOT / "connect.html", ROOT / "tests" / "index.html"]:
     text = read(path)
     new = page_ref.sub(lambda m: f"{m[1]}{m[2]}?v={version}{m[3]}", text)
     if new != text:

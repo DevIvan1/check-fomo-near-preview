@@ -1,8 +1,8 @@
 // Network layer: FastNEAR tx API, NEAR RPC, FastNEAR balances, Nearly and price APIs.
 
-import { TX_API, FASTNEAR_API, RPC_URLS, RPC_FAST, RPC_ARCHIVAL, NEARBLOCKS_API, NEARLY_API, INTEAR_PRICES, REF_PRICES, FASTNEAR_API_KEY } from './config.js?v=a142e7bf';
-import { fromRpcTxStatus } from './parser.js?v=a142e7bf';
-import { sleep, chunk } from './util.js?v=a142e7bf';
+import { TX_API, FASTNEAR_API, RPC_URLS, RPC_FAST, RPC_ARCHIVAL, NEARBLOCKS_API, NEARLY_API, INTEAR_PRICES, REF_PRICES, FASTNEAR_API_KEY } from './config.js?v=90330b4f';
+import { fromRpcTxStatus } from './parser.js?v=90330b4f';
+import { sleep, chunk } from './util.js?v=90330b4f';
 
 export class HttpError extends Error {
   constructor(status, url) {
@@ -49,8 +49,10 @@ export async function fetchJson(url, { method = 'GET', body, timeout = 15000, re
 
 // ---- FastNEAR transactions API ----
 
-export async function accountTxs(accountId, { limit = 200, resumeToken, fromHeight } = {}) {
+// signerOnly: only transactions the account signed itself (its own trades and actions).
+export async function accountTxs(accountId, { limit = 200, resumeToken, fromHeight, signerOnly = false } = {}) {
   const body = { account_id: accountId, limit };
+  if (signerOnly) body.is_real_signer = true;
   if (resumeToken) body.resume_token = resumeToken;
   if (fromHeight) body.from_tx_block_height = fromHeight;
   return fetchJson(`${TX_API}/account`, { method: 'POST', body, retries: 1 });
@@ -127,8 +129,9 @@ export async function viewFunction(contract, method, args = {}, opts) {
 
 // ---- Backup history: NearBlocks for the list, RPC tx status for the details ----
 
-export async function accountTxsBackup(accountId, { limit = 25 } = {}) {
-  const r = await fetchJson(`${NEARBLOCKS_API}/account/${encodeURIComponent(accountId)}/txns?per_page=${Math.min(25, limit)}`, { timeout: 12000, retries: 0 });
+export async function accountTxsBackup(accountId, { limit = 25, signerOnly = false } = {}) {
+  const path = signerOnly ? 'txns-only' : 'txns';
+  const r = await fetchJson(`${NEARBLOCKS_API}/account/${encodeURIComponent(accountId)}/${path}?per_page=${Math.min(25, limit)}`, { timeout: 12000, retries: 0 });
   const rows = new Map();
   for (const x of r.txns || []) {
     const h = x.transaction_hash;

@@ -1,6 +1,6 @@
 // Static configuration: endpoints, known contracts and labels.
 
-import { t } from './i18n.js?v=a142e7bf';
+import { t } from './i18n.js?v=90330b4f';
 
 export const TX_API = 'https://tx.main.fastnear.com/v0';
 export const FASTNEAR_API = 'https://api.fastnear.com/v1';
@@ -36,7 +36,8 @@ export const DEFAULT_SETTINGS = {
   lang: 'en', // 'en' | 'ru'
   theme: 'auto', // 'auto' | 'light' | 'dark'
   sound: true,
-  volume: 0.6,
+  volume: 0.8,
+  followAlerts: true, // sound/notify on trades of followed wallets
   notify: false,
   alertLevel: 'normal', // 'all' | 'normal' | 'trades'
   alertMinNear: 0,
