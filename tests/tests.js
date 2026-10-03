@@ -2,7 +2,7 @@
 
 import { analyzeTx, parseLog, statusKind, failureMessage } from '../js/parser.js';
 import { describe, humanError } from '../js/describe.js';
-import { computePositions, positionRows, accountStats } from '../js/positions.js';
+import { computePositions, positionRows, accountStats, periodSummary } from '../js/positions.js';
 import { normalizeAccount, shouldAlert, nearSize, soundKind } from '../js/rules.js';
 import { toDecimalString, toNumber, fmtNum, big, shortHash, shortAccount, fmtPct, relTime } from '../js/util.js';
 import { safeIcon, dclPrice, routePrice } from '../js/tokens.js';
@@ -466,6 +466,62 @@ async function main() {
     const unpriced = positionRows(pos, { balance: () => 5, priceNear: () => null }).find((x) => x.token === 'singularty.nearlytrade.near');
     eq(unpriced.pnlTotal, null, 'без цены PnL неизвестен, а не −100%');
     eq(unpriced.pnlPct, null);
+  });
+  test('PnL закрытых сделок в NEAR и $: на продаже и на покупке закрытой позиции', () => {
+    const list = ['BUY_BATMAN', 'SELL_BATMAN'].map((k) => A(k));
+    const pos = computePositions(list, { decimals, launchToken: () => null });
+    const sell = describe(list[1], ctx());
+    const line = sell.lines.find((l) => l.label === 'PnL');
+    ok(line, 'строка PnL на продаже');
+    has(line.value, '+199%');
+    has(line.value, '+357,96 NEAR');
+    has(line.note, '$');
+    has(line.note, 'позиция закрыта');
+    const buy = describe(list[0], ctx({ positionOpen: () => false, positionStats: (tk) => pos.get(tk) }));
+    const bl = buy.lines.find((l) => l.label === 'PnL');
+    has(bl.value, '+199%');
+    has(bl.value, '+357,96 NEAR');
+    has(bl.note, '$');
+    eq(bl.live, undefined, 'закрытая позиция не «живая»');
+  });
+  test('сводка за период: реализованный + открытый PnL, % от вложенного, выплаты', () => {
+    const list = ['BUY_NEARLEE_MULTIHOP', 'BUY_BATMAN', 'SELL_BATMAN', 'SELL_NEARLEE_MULTIHOP', 'BUY_SINGULARTY', 'PAYOUT_NEAR'].map((k) => A(k));
+    const pos = computePositions(list, { decimals, launchToken: (id) => LAUNCHES[id] || null });
+    const live = {
+      decimals,
+      balance: (tk) => (tk === 'singularty.nearlytrade.near' ? 7699268.852336594 : 0),
+      priceNear: (tk) => (tk === 'singularty.nearlytrade.near' ? 0.0001 : 0.00001),
+      isOpen: (tk) => tk === 'singularty.nearlytrade.near',
+    };
+    const all = periodSummary(list, pos, 0, live);
+    eq(all.rows.length, 3);
+    approx(all.realized, (537.956325446286 - 180) + (151.808508 - 200), 1e-3);
+    approx(all.unrealized, 769.9268852336594 - 500, 1e-6);
+    approx(all.total, all.realized + all.unrealized, 1e-9);
+    approx(all.base, 180 + 200 + 500, 1e-6);
+    approx(all.pct, (all.total / 880) * 100, 1e-6);
+    eq(all.payouts, 1);
+    approx(all.payoutsNear, 0.0302225888, 1e-9);
+    approx(all.totalWithPayouts, all.total + all.payoutsNear, 1e-9);
+    eq(all.buys, 3);
+    eq(all.sells, 2);
+    approx(all.winRate, 50, 1e-9);
+    eq(all.best.token, 'batman-4.nearlytrade.near');
+    eq(all.worst.token, 'nearlee.nearlytrade.near');
+    const sing = all.rows.find((r) => r.token === 'singularty.nearlytrade.near');
+    eq(sing.open, true);
+    approx(sing.pct, (269.9268852336594 / 500) * 100, 1e-6);
+    // window that starts with the BATMAN sell: the earlier BATMAN buy is outside it
+    const since = list[2].timestampMs;
+    const win = periodSummary(list, pos, since, live);
+    const bat = win.rows.find((r) => r.token === 'batman-4.nearlytrade.near');
+    eq(bat.buys, 0);
+    eq(bat.sells, 1);
+    approx(bat.realized, 537.956325446286 - 180, 1e-4, 'реализованный PnL по стоимости из всей истории');
+    eq(win.buys, 1);
+    const none = periodSummary(list, pos, Date.now() + 1000, live);
+    eq(none.rows.length, 0);
+    eq(none.total, 0);
   });
   test('stats', () => {
     const list = ['BUY_NEARLEE_MULTIHOP', 'SELL_NEARLEE_MULTIHOP', 'FUNDING', 'PAYOUT_NEAR', 'FAILED_BUY_SYNTHETIC'].map((k) => A(k));

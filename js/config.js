@@ -40,6 +40,7 @@ export const DEFAULT_SETTINGS = {
   pollSec: 3,
   showPayouts: true,
   showMentions: false,
+  summaryDays: 1, // 1 | 7 | 30
 };
 
 // Known contracts. kind: dex | launchpad | wrap | lending | wallet

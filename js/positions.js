@@ -134,3 +134,86 @@ export function accountStats(analyses, now = Date.now()) {
 }
 
 export const isNearToken = (t) => t === NEAR_ID || t === WNEAR;
+
+// PnL summary for trades made since `since` (ms): realized PnL of sells in the period
+// (average-cost, cost basis from the whole loaded history) plus the current unrealized PnL
+// of positions in those tokens that are still open, valued at the live price.
+// live: { decimals(t), balance(t) -> number|null, priceNear(t) -> number|null, isOpen(t) -> bool|null }
+export function periodSummary(analyses, pos, since, live) {
+  const rows = new Map();
+  const row = (token) => {
+    if (!rows.has(token)) {
+      rows.set(token, {
+        token, buys: 0, sells: 0, spent: 0, received: 0, realized: 0, realizedCost: 0, wins: 0,
+        open: false, openCost: 0, value: null, unrealized: null, total: 0, pct: null, lastTs: 0,
+      });
+    }
+    return rows.get(token);
+  };
+  const s = { buys: 0, sells: 0, wins: 0, spent: 0, received: 0, realized: 0, unrealized: 0, payoutsNear: 0, payouts: 0, unpriced: 0 };
+
+  for (const a of analyses) {
+    if (!a || a.timestampMs < since) continue;
+    if (a.kind === 'trade' && a.trade.side !== 'swap') {
+      const tr = a.trade;
+      if (live.decimals(tr.token) === null || live.decimals(tr.token) === undefined) continue;
+      const r = row(tr.token);
+      r.lastTs = Math.max(r.lastTs, a.timestampMs);
+      if (tr.side === 'buy') {
+        r.buys += 1;
+        r.spent += toNumber(tr.amountIn, 24);
+      } else {
+        r.sells += 1;
+        r.received += toNumber(tr.amountOut, 24);
+        if (a.realized) {
+          r.realized += a.realized.pnl;
+          r.realizedCost += a.realized.costNear;
+          if (a.realized.pnl > 0) r.wins += 1;
+        }
+      }
+    } else if (a.kind === 'payout') {
+      s.payouts += 1;
+      if (a.nearDelta > 0n) s.payoutsNear += toNumber(a.nearDelta, 24);
+    }
+  }
+
+  for (const r of rows.values()) {
+    const p = pos.get(r.token);
+    if (live.isOpen(r.token) && p) {
+      r.open = true;
+      r.openCost = p.cost;
+      const bal = live.balance(r.token);
+      const held = bal ?? p.qty;
+      const price = live.priceNear(r.token);
+      if (price !== null && price !== undefined) {
+        r.value = held * price;
+        r.unrealized = r.value - p.cost;
+      } else {
+        s.unpriced += 1;
+      }
+    }
+    r.total = r.realized + (r.unrealized ?? 0);
+    const base = r.realizedCost + (r.open && r.unrealized !== null ? r.openCost : 0);
+    r.base = base;
+    r.pct = base > 0 ? (r.total / base) * 100 : null;
+    s.buys += r.buys;
+    s.sells += r.sells;
+    s.wins += r.wins;
+    s.spent += r.spent;
+    s.received += r.received;
+    s.realized += r.realized;
+    s.unrealized += r.unrealized ?? 0;
+  }
+
+  const list = [...rows.values()].sort((x, y) => y.lastTs - x.lastTs);
+  s.total = s.realized + s.unrealized;
+  s.base = list.reduce((acc, r) => acc + r.base, 0);
+  s.pct = s.base > 0 ? (s.total / s.base) * 100 : null;
+  s.totalWithPayouts = s.total + s.payoutsNear;
+  s.winRate = s.sells > 0 ? (s.wins / s.sells) * 100 : null;
+  const ranked = list.filter((r) => r.unrealized !== null || !r.open).slice().sort((x, y) => y.total - x.total);
+  s.best = ranked.length ? ranked[0] : null;
+  s.worst = ranked.length > 1 ? ranked[ranked.length - 1] : null;
+  s.rows = list;
+  return s;
+}

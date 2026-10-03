@@ -111,18 +111,32 @@ function priceInfo(a, f, ctx) {
   return { price, fdv: supplyN ? price * supplyN : null };
 }
 
-// Live result of a buy if the tokens were valued at the current pool price.
+function usdText(near, ctx) {
+  return ctx.nearUsd ? `≈ ${near >= 0 ? '+' : ''}${fmtUsd(near * ctx.nearUsd)}` : '';
+}
+
+function pnlValue(pct, near) {
+  return pct === null || pct === undefined ? `${fmtNum(near, { sign: true })} NEAR` : `${fmtPct(pct)} (${fmtNum(near, { sign: true })} NEAR)`;
+}
+
+// PnL of a buy: live (tokens valued at the current pool price) while the wallet holds the token,
+// the realized result of the whole position once it is closed.
 function pnlLine(tr, now, f, ctx) {
-  if (ctx.positionOpen && ctx.positionOpen(tr.token) === false) return { label: t('l.pnl'), value: t('closed') };
+  if (ctx.positionOpen && ctx.positionOpen(tr.token) === false) {
+    const p = ctx.positionStats ? ctx.positionStats(tr.token) : null;
+    if (!p || !(p.nearIn > 0)) return { label: t('l.pnl'), value: t('closed') };
+    const pct = (p.realized / p.nearIn) * 100;
+    return {
+      label: t('l.pnl'), value: pnlValue(pct, p.realized), note: [usdText(p.realized, ctx), t('closed')].filter(Boolean).join(' · '),
+      tone: p.realized >= 0 ? 'up' : 'down',
+    };
+  }
+  if (!now) return null;
   const spent = f.num(tr.amountIn, NEAR_ID);
   const value = f.num(tr.amountOut, tr.token) * now;
   const pnl = value - spent;
   const pct = spent ? (pnl / spent) * 100 : null;
-  const usd = ctx.nearUsd ? `≈ ${pnl >= 0 ? '+' : ''}${fmtUsd(pnl * ctx.nearUsd)}` : '';
-  return {
-    label: t('l.pnl'), value: `${fmtPct(pct)} (${fmtNum(pnl, { sign: true })} NEAR)`, note: usd,
-    tone: pnl >= 0 ? 'up' : 'down', dyn: true, live: true,
-  };
+  return { label: t('l.pnl'), value: pnlValue(pct, pnl), note: usdText(pnl, ctx), tone: pnl >= 0 ? 'up' : 'down', dyn: true, live: true };
 }
 
 export function describe(a, ctx) {
@@ -177,12 +191,16 @@ export function describe(a, ctx) {
           const fdvNow = pi.fdv ? (pi.fdv / pi.price) * now : null;
           const nowNote = [fdvNow ? t('fdvNow', fmtNum(fdvNow)) : null, t('sinceTrade', fmtPct(ch))].filter(Boolean).join(' · ');
           main.push({ label: t('l.now'), value: `${fmtNum(now, { compact: false })} NEAR`, note: nowNote, tone: ch >= 0 ? 'up' : 'down', dyn: true });
-          if (tr.side === 'buy') main.push(pnlLine(tr, now, f, ctx));
         }
+      }
+      if (tr.side === 'buy') {
+        const line = pnlLine(tr, ctx.priceNear ? ctx.priceNear(tr.token) : null, f, ctx);
+        if (line) main.push(line);
       }
       if (a.realized && tr.side === 'sell') {
         const r = a.realized;
-        main.push({ label: t('l.result'), value: `${fmtNum(r.pnl, { sign: true })} NEAR`, note: t('vsAvg', { pct: fmtPct(r.pct), closed: r.closed }), tone: r.pnl >= 0 ? 'up' : 'down' });
+        const note = [usdText(r.pnl, ctx), t('realizedNote'), r.closed ? t('closed') : null].filter(Boolean).join(' · ');
+        main.push({ label: t('l.pnl'), value: pnlValue(r.pct, r.pnl), note, tone: r.pnl >= 0 ? 'up' : 'down' });
       }
       const routeTxt = tr.route.map((x) => f.sym(x)).join(' → ');
       const fees = [...new Set(tr.pools.map(poolFee).filter(Boolean))];

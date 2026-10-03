@@ -11,7 +11,8 @@ Created by [@Checker1crypto](https://x.com/Checker1crypto).
 - **Live feed.** Every 3 seconds (configurable) a lightweight RPC call checks the wallet balance. Any transaction the wallet signs burns gas, so a change shows up right away and triggers a fetch of the new transactions. A 15-second safety poll also catches token-only transfers. Events usually appear 4–8 seconds after the block. Posts whose receipts are still executing are marked "executing" and update themselves.
 - **Trade details.** NEAR spent or received, token amount, token tax (1–2% on Nearly tokens), price per token, FDV at the time of the trade, route (`NEAR → NEARLY → NEARLEE`), pools and fees, venue (Rhea DCL / Rhea / NEAR Intents) and launchpad (Nearly and others).
 - **Live PnL on buys.** While the wallet still holds the token, the buy post refreshes every 3 seconds from the Rhea DCL pool price. It shows the current PnL in %, the unrealized profit in NEAR in brackets, and the USD equivalent, for example `+10% (+50 NEAR) ≈ +$235`. The "Now" line shows the current price, current FDV and the change since the trade.
-- **Sell results.** Every sell shows its PnL against the average entry price and marks closed positions.
+- **Closed trades.** Every sell shows its realized PnL against the average entry price in %, NEAR and USD. Buys of positions that are already closed show the position's final PnL the same way.
+- **Summary tab.** Pick 24h, 7 days or 30 days to see the PnL of all trades in that period. It adds the realized PnL of sells to the live unrealized PnL of positions still open, valued at the current pool price. You also get holder payouts, a total including payouts, bought/sold volume, number of trades, the share of profitable sells, the best and worst token, and a per-token breakdown.
 - **Failed trades** are explained in plain words: slippage, insufficient funds, stop-point order not filled.
 - **Signals:** `storage_deposit` into a token (often a step before buying), new access keys and contract deploys are highlighted.
 - **Alerts.**
@@ -40,7 +41,7 @@ Amounts come from NEP-141 events (`ft_transfer`, `ft_mint`, `ft_burn`), wNEAR te
 
 ## Tests
 
-`tests/index.html` runs about 50 tests in the browser. They cover the parser, post texts in both languages, PnL, alert rules and XSS safety, using real transactions and synthetic edge cases. Open the tests through any static server:
+`tests/index.html` runs 54 tests in the browser. They cover the parser, post texts in both languages, PnL, alert rules and XSS safety, using real transactions and synthetic edge cases. Open the tests through any static server:
 
 ```bash
 python -m http.server 8000

@@ -6,7 +6,7 @@ import * as api from './api.js';
 import * as tokens from './tokens.js';
 import { analyzeTx } from './parser.js';
 import { describe, tokenLinks } from './describe.js';
-import { computePositions, positionRows, accountStats } from './positions.js';
+import { computePositions, positionRows, accountStats, periodSummary } from './positions.js';
 import * as alerts from './alerts.js';
 import {
   fmtNum, fmtUsd, fmtPct, relTime, fmtTime, fmtDateTime, dayLabel, toNumber, shortAccount,
@@ -388,6 +388,7 @@ function describeCtx() {
     launchToken: tokens.launchToken,
     supply: tokens.supply,
     positionOpen,
+    positionStats: (token) => state.positions.get(token) || null,
   };
 }
 
@@ -668,6 +669,7 @@ function refreshLiveLines(tokenSet) {
   }
   renderPositions();
   renderHoldings();
+  if (state.filter === 'summary') renderSummary();
 }
 
 // ---------------- ticker ----------------
@@ -907,6 +909,14 @@ function buildPayoutGroup(items) {
 }
 
 function renderFeed() {
+  const summary = state.filter === 'summary';
+  document.body.classList.toggle('view-summary', summary);
+  $('#summaryView').hidden = !summary;
+  if (summary) {
+    renderCounts();
+    renderSummary();
+    return;
+  }
   const feed = $('#feed');
   const frag = document.createDocumentFragment();
   const list = sortedItems().filter((it) => it.d && passesFilter(it));
@@ -942,6 +952,89 @@ function updateRelativeTimes() {
   document.querySelectorAll('.rel[data-ts]').forEach((n) => {
     n.textContent = relTime(Number(n.dataset.ts), now);
   });
+}
+
+// Token balance as a number, 0 when balances are loaded and the token is absent, null if unknown.
+function liveBalance(t) {
+  const raw = state.ftBalances.get(t);
+  const dec = tokens.decimals(t);
+  if (dec === null) return null;
+  if (raw === undefined) return state.ftLoaded ? 0 : null;
+  return toNumber(raw, dec);
+}
+
+function renderSummary() {
+  const box = $('#summaryView');
+  const days = [1, 7, 30].includes(state.settings.summaryDays) ? state.settings.summaryDays : 1;
+  const since = Date.now() - days * 86400000;
+  const analyses = [...state.items.values()].map((i) => i.a);
+  const s = periodSummary(analyses, state.positions, since, {
+    decimals: tokens.decimals, balance: liveBalance, priceNear: tokens.priceNear, isOpen: positionOpen,
+  });
+  const usd = tokens.getNearUsd();
+  const near = (v) => `${fmtNum(v, { sign: true })} NEAR`;
+  const usdOf = (v) => (usd ? `≈ ${v >= 0 ? '+' : ''}${fmtUsd(v * usd)}` : '');
+  const tone = (v) => (v > 0 ? 'up' : v < 0 ? 'down' : '');
+  const symOf = (tok) => tokens.meta(tok)?.symbol || tok;
+
+  const seg = el('div', { class: 'seg', role: 'radiogroup', 'aria-label': t('sum.period') },
+    [[1, 'sum.24h'], [7, 'sum.7d'], [30, 'sum.30d']].map(([d, key]) => el('button', {
+      type: 'button', role: 'radio', 'aria-checked': String(d === days), class: d === days ? 'on' : '',
+      onclick: () => {
+        state.settings.summaryDays = d;
+        saveSettings();
+        renderSummary();
+      },
+    }, t(key))));
+
+  const notes = el('div', { class: 'sum-notes muted small' }, el('p', { class: 'panel-note' }, t('sum.note')));
+  const loaded = analyses.map((a) => a.timestampMs);
+  const oldest = loaded.length ? Math.min(...loaded) : null;
+  if (state.resumeToken && oldest && oldest > since) notes.append(el('p', { class: 'panel-note' }, t('sum.partial', fmtDateTime(oldest))));
+  if (s.unpriced) notes.append(el('p', { class: 'panel-note' }, t('sum.unpriced', s.unpriced)));
+
+  if (!s.rows.length) {
+    box.replaceChildren(seg, el('div', { class: 'sum-empty muted' }, t('sum.empty')), el('div', { class: 'sum-grid' },
+      el('div', {}, el('dt', {}, t('sum.payouts')), el('dd', {}, `+${fmtNum(s.payoutsNear)} NEAR`, el('small', {}, `(${s.payouts})`)))), notes);
+    return;
+  }
+
+  const hero = el('div', { class: 'sum-hero' },
+    el('div', { class: 'sum-label muted' }, t('sum.total')),
+    el('div', { class: `sum-big ${tone(s.total)}` }, near(s.total)),
+    el('div', { class: 'sum-sub' }, [s.pct !== null ? fmtPct(s.pct) : null, usdOf(s.total), s.base > 0 ? t('sum.ofBase', fmtNum(s.base)) : null].filter(Boolean).join(' · ')));
+
+  const cell = (label, value, cls = '', small = '') => el('div', {}, el('dt', {}, label), el('dd', { class: cls }, value, small ? el('small', {}, small) : null));
+  const grid = el('dl', { class: 'sum-grid' },
+    cell(t('sum.realized'), near(s.realized), tone(s.realized), usdOf(s.realized)),
+    cell(t('sum.unrealized'), near(s.unrealized), tone(s.unrealized), usdOf(s.unrealized)),
+    cell(t('sum.payouts'), `+${fmtNum(s.payoutsNear)} NEAR`, s.payoutsNear > 0 ? 'up' : '', `(${s.payouts})`),
+    cell(t('sum.withPayouts'), near(s.totalWithPayouts), tone(s.totalWithPayouts), usdOf(s.totalWithPayouts)),
+    cell(t('sum.bought'), `${fmtNum(s.spent)} NEAR`),
+    cell(t('sum.sold'), `${fmtNum(s.received)} NEAR`),
+    cell(t('sum.trades'), t('st.tradesVal', { n: s.buys + s.sells, b: s.buys, s: s.sells })),
+    cell(t('sum.winrate'), s.winRate !== null ? fmtPct(s.winRate, { sign: false }) : '—', '', s.winRate !== null ? `(${s.wins}/${s.sells})` : ''),
+    s.best ? cell(t('sum.best'), `${symOf(s.best.token)} ${near(s.best.total)}`, tone(s.best.total)) : null,
+    s.worst ? cell(t('sum.worst'), `${symOf(s.worst.token)} ${near(s.worst.total)}`, tone(s.worst.total)) : null,
+  );
+
+  const rows = el('div', { class: 'sum-rows' });
+  for (const r of s.rows) {
+    const priced = !r.open || r.unrealized !== null;
+    rows.append(el('div', { class: 'sum-row' },
+      tokenIcon(r.token, 'pos-icon'),
+      el('div', {},
+        el('button', { type: 'button', class: 'link-btn pos-name', title: t('showTradesOf', symOf(r.token)), onclick: () => setSearch(symOf(r.token)) },
+          symOf(r.token), el('span', { class: 'chip' }, t(r.open ? 'sum.open' : 'sum.closed'))),
+        el('div', { class: 'pos-meta' }, t('sum.rowMeta', { b: fmtNum(r.spent), s: fmtNum(r.received) })),
+        el('div', { class: 'pos-meta' }, t('sum.rowSplit', { r: near(r.realized), u: r.open ? (r.unrealized !== null ? near(r.unrealized) : '…') : '—' }))),
+      el('div', { class: `pos-pnl ${priced ? tone(r.total) : 'muted'}` },
+        priced ? near(r.total) : '…',
+        el('span', { class: 'pct' }, [r.pct !== null ? fmtPct(r.pct) : null, priced ? usdOf(r.total) : null].filter(Boolean).join(' · '))),
+    ));
+  }
+
+  box.replaceChildren(seg, hero, grid, el('div', { class: 'sum-section' }, t('sum.tokens')), rows, notes);
 }
 
 function renderSide() {
@@ -1048,6 +1141,10 @@ function renderStats() {
 }
 
 function setSearch(q) {
+  if (state.filter === 'summary') {
+    state.filter = 'all';
+    document.querySelectorAll('#tabs button').forEach((x) => x.setAttribute('aria-selected', String(x.dataset.filter === 'all')));
+  }
   $('#searchInput').value = q;
   state.search = q;
   renderFeed();

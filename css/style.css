@@ -291,6 +291,33 @@ body.is-landing .footer { display: none; }
 
 .feed-footer { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 14px; }
 
+/* ---------- summary tab ---------- */
+body.view-summary .toolbar-row,
+body.view-summary #newBanner,
+body.view-summary #feed,
+body.view-summary .feed-footer { display: none !important; }
+.summary { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 16px; display: grid; gap: 16px; }
+.seg { display: inline-flex; gap: 2px; padding: 3px; background: var(--chip); border-radius: 10px; justify-self: start; }
+.seg button { border: 0; background: transparent; color: var(--muted); padding: 6px 14px; border-radius: 8px; cursor: pointer; font-size: 13px; }
+.seg button.on { background: var(--surface); color: var(--text); font-weight: 500; box-shadow: 0 1px 2px rgb(0 0 0 / 0.08); }
+.sum-hero { display: grid; gap: 2px; }
+.sum-label { font-size: 13px; }
+.sum-big { font-size: 30px; font-weight: 650; letter-spacing: -0.01em; font-variant-numeric: tabular-nums; }
+.sum-sub { color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+.sum-grid { margin: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 20px; }
+.sum-grid > div { display: grid; gap: 1px; padding-top: 8px; border-top: 1px solid var(--line); }
+.sum-grid dt { color: var(--muted); font-size: 12px; }
+.sum-grid dd { margin: 0; font-size: 14px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.sum-grid dd small { color: var(--muted); font-size: 12px; margin-left: 4px; }
+.sum-section { font-size: 13px; font-weight: 600; color: var(--muted); margin: 4px 0 -6px; }
+.sum-rows { display: grid; }
+.sum-row { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 9px 0; border-top: 1px solid var(--line); }
+.sum-row:first-child { border-top: 0; }
+.sum-row .chip { font-size: 11px; padding: 0 7px; border-radius: 999px; background: var(--chip); color: var(--muted); margin-left: 6px; font-weight: 400; }
+.sum-empty { padding: 8px 0; }
+.sum-notes { display: grid; gap: 4px; }
+@media (max-width: 520px) { .sum-grid { grid-template-columns: minmax(0, 1fr); } .sum-big { font-size: 26px; } }
+
 /* ---------- side panels ---------- */
 .panel-title { margin: 0 0 10px; font-size: 13px; font-weight: 600; color: var(--muted); }
 .panel-note { margin: 10px 0 0; }
