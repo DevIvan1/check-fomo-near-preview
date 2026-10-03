@@ -10,8 +10,8 @@
   <meta name="author" content="@Checker1crypto (https://x.com/Checker1crypto)">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; worker-src 'self'; style-src 'self'; img-src 'self' data: https:; connect-src 'self' https://check-fomo-near.vercel.app https://tx.main.fastnear.com https://api.fastnear.com https://rpc.mainnet.fastnear.com https://near.drpc.org https://rpc.shitzuapes.xyz https://free.rpc.fastnear.com https://rpc.mainnet.near.org https://archival-rpc.mainnet.fastnear.com https://api.nearblocks.io https://nearly.trade https://prices.intear.tech https://events-v3.intear.tech https://api.ref.finance; base-uri 'none'; form-action 'self'; object-src 'none'">
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
-  <script src="js/boot.js?v=e6d5b684"></script>
-  <link rel="stylesheet" href="css/style.css?v=e6d5b684">
+  <script src="js/boot.js?v=b8feafcb"></script>
+  <link rel="stylesheet" href="css/style.css?v=b8feafcb">
 </head>
 <body>
   <header class="topbar">
@@ -213,6 +213,23 @@
     </form>
   </dialog>
 
+  <dialog class="dialog gate" id="gateDialog" aria-labelledby="gateTitle">
+    <div class="dialog-body gate-body">
+      <button type="button" class="btn btn-icon gate-close" id="gateClose" aria-label="Close" data-i18n-aria="gate.close" title="Close" data-i18n-title="gate.close">×</button>
+      <h2 id="gateTitle" class="dialog-title" data-i18n="gate.title">Sign in to view wallets</h2>
+      <p class="gate-sub muted" id="gateSub"></p>
+      <button type="button" class="btn connect-btn" id="gateConnect" data-i18n="gate.connect">Connect wallet</button>
+      <div class="connect-or muted small" data-i18n="gate.or">or enter your address</div>
+      <form class="landing-form" id="gateForm" autocomplete="off">
+        <label class="sr-only" for="gateInput" data-i18n="gate.yourAddress">Your NEAR address</label>
+        <input id="gateInput" class="landing-input" spellcheck="false" autocapitalize="off" placeholder="your-account.near" data-i18n-placeholder="gate.placeholder">
+        <button class="btn btn-ghost" type="submit" data-i18n="gate.continue">Continue</button>
+      </form>
+      <p class="connect-status muted small" id="gateStatus" role="status"></p>
+      <p class="gate-note muted small" data-i18n="gate.note">Check fomo only reads your address: no transactions, no approvals. The address is saved to the site’s usage log.</p>
+    </div>
+  </dialog>
+
   <div class="toast" id="toast" role="status" hidden></div>
 
   <footer class="footer small">
@@ -220,6 +237,6 @@
     <div class="sources muted" data-i18n="sources">Data: FastNEAR (transactions, balances), NEAR RPC, Nearly API, Intear (prices, swaps), Rhea (prices, pools). Everything is calculated in your browser. The site keeps a usage log: wallet addresses that connect or are searched here (no IP, no cookies).</div>
   </footer>
 
-  <script type="module" src="js/app.js?v=e6d5b684"></script>
+  <script type="module" src="js/app.js?v=b8feafcb"></script>
 </body>
 </html>

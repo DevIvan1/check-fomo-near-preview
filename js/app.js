@@ -1,22 +1,22 @@
 // UI + live polling loop.
 
-import { DEFAULT_SETTINGS, HISTORY_PAGE, POLL_PAGE, NEAR_ID, WNEAR, explorer } from './config.js?v=e6d5b684';
-import { normalizeAccount, shouldAlert, soundKind } from './rules.js?v=e6d5b684';
-import * as api from './api.js?v=e6d5b684';
-import * as tokens from './tokens.js?v=e6d5b684';
-import { analyzeTx } from './parser.js?v=e6d5b684';
-import { describe, tokenLinks } from './describe.js?v=e6d5b684';
-import { computePositions, periodSummary, positionCards, positionsOverview, sortPositionCards } from './positions.js?v=e6d5b684';
-import * as alerts from './alerts.js?v=e6d5b684';
+import { DEFAULT_SETTINGS, HISTORY_PAGE, POLL_PAGE, NEAR_ID, WNEAR, explorer } from './config.js?v=b8feafcb';
+import { normalizeAccount, shouldAlert, soundKind } from './rules.js?v=b8feafcb';
+import * as api from './api.js?v=b8feafcb';
+import * as tokens from './tokens.js?v=b8feafcb';
+import { analyzeTx } from './parser.js?v=b8feafcb';
+import { describe, tokenLinks } from './describe.js?v=b8feafcb';
+import { computePositions, periodSummary, positionCards, positionsOverview, sortPositionCards } from './positions.js?v=b8feafcb';
+import * as alerts from './alerts.js?v=b8feafcb';
 import {
   fmtNum, fmtUsd, fmtUsdCompact, fmtPct, fmtDateShort, relTime, fmtTime, fmtDateTime, dayLabel, toNumber, shortAccount,
   storageGet, storageSet, toDecimalString,
-} from './util.js?v=e6d5b684';
-import { t, tp, setLang, getLang, getLocale, applyStatic } from './i18n.js?v=e6d5b684';
-import * as session from './session.js?v=e6d5b684';
-import { FollowFeed } from './following.js?v=e6d5b684';
-import { Leaderboard, WINDOWS as LB_WINDOWS } from './leaderboard.js?v=e6d5b684';
-import { track } from './track.js?v=e6d5b684';
+} from './util.js?v=b8feafcb';
+import { t, tp, setLang, getLang, getLocale, applyStatic } from './i18n.js?v=b8feafcb';
+import * as session from './session.js?v=b8feafcb';
+import { FollowFeed } from './following.js?v=b8feafcb';
+import { Leaderboard, WINDOWS as LB_WINDOWS } from './leaderboard.js?v=b8feafcb';
+import { track } from './track.js?v=b8feafcb';
 
 const $ = (sel) => document.querySelector(sel);
 const SETTINGS_KEY = 'nwm.settings.v1';
@@ -368,6 +368,10 @@ function showLanding({ push = false } = {}) {
 }
 
 async function switchAccount(acc, { push = true } = {}) {
+  if (!session.getSession()) {
+    openGate(acc); // wallets are shown only to signed-in visitors (links included)
+    return;
+  }
   resetAccountState(acc);
   const gen = state.generation;
   setUrl(acc, push);
@@ -813,7 +817,7 @@ function onTick() {
 
 function startTicker() {
   try {
-    const w = new Worker(new URL('./ticker.js?v=e6d5b684', import.meta.url));
+    const w = new Worker(new URL('./ticker.js?v=b8feafcb', import.meta.url));
     w.onmessage = onTick;
     w.postMessage({ cmd: 'start', ms: 500 });
   } catch {
@@ -1328,8 +1332,7 @@ function bindUI() {
       toast(t('badAccount'));
       return;
     }
-    track('search', acc, null, { by: session.getSession()?.accountId });
-    if (acc !== state.account) switchAccount(acc);
+    if (acc !== state.account) openWallet(acc);
   });
 
   $('#landingForm').addEventListener('submit', (e) => {
@@ -1339,8 +1342,7 @@ function bindUI() {
       toast(t('badAddress'));
       return;
     }
-    track('search', acc, null, { by: session.getSession()?.accountId });
-    switchAccount(acc);
+    openWallet(acc);
   });
 
   $('#homeLink').addEventListener('click', (e) => {
@@ -1416,6 +1418,93 @@ function bindUI() {
   setInterval(updateRelativeTimes, 15000);
 }
 
+// ---------------- sign-in gate ----------------
+
+const PENDING_KEY = 'cf.pendingSearch'; // the address to log as searched after a wallet connects
+let gatePending = null;
+
+// An address typed into a search box: opens it for signed-in visitors, asks to sign in otherwise.
+function openWallet(acc) {
+  const s = session.getSession();
+  if (!s) {
+    openGate(acc);
+    return;
+  }
+  track('search', acc, null, { by: s.accountId });
+  switchAccount(acc);
+}
+
+function openGate(acc = null) {
+  if (state.account || $('#landing').hidden) showLanding({ push: false });
+  gatePending = acc;
+  $('#gateSub').textContent = t('gate.sub', acc ? shortAccount(acc) : '');
+  $('#gateStatus').textContent = '';
+  $('#gateInput').value = '';
+  const d = $('#gateDialog');
+  if (!d.open) {
+    if (typeof d.showModal === 'function') d.showModal();
+    else d.setAttribute('open', '');
+  }
+  $('#gateInput').focus();
+}
+
+function closeGate() {
+  const d = $('#gateDialog');
+  if (d.open) d.close();
+  gatePending = null;
+}
+
+function bindGate() {
+  const d = $('#gateDialog');
+  d.addEventListener('close', () => {
+    gatePending = null;
+  });
+  $('#gateClose').addEventListener('click', closeGate);
+  $('#gateConnect').addEventListener('click', () => {
+    const u = new URL('connect.html', location.href);
+    u.searchParams.set('return', gatePending ? `./?account=${encodeURIComponent(gatePending)}` : './');
+    try {
+      if (gatePending) sessionStorage.setItem(PENDING_KEY, gatePending);
+    } catch {
+      /* storage blocked: the search is just not logged */
+    }
+    location.href = u.href;
+  });
+  $('#gateForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const status = $('#gateStatus');
+    const acc = normalizeAccount($('#gateInput').value);
+    if (!acc) {
+      status.textContent = t('badAccount');
+      return;
+    }
+    status.textContent = t('gate.checking');
+    try {
+      await api.viewAccount(acc);
+    } catch (err) {
+      status.textContent = /does not exist|UNKNOWN_ACCOUNT/i.test(String(err?.message)) ? t('accountMissing') : t('gate.netError');
+      return;
+    }
+    const target = gatePending;
+    session.setSession({ accountId: acc, wallet: null, watchOnly: true });
+    track('manual', acc);
+    closeGate();
+    if (target) openWallet(target);
+  });
+}
+
+// After a wallet connected on connect.html: log the address the visitor was trying to open.
+function logPendingSearch() {
+  try {
+    const pending = sessionStorage.getItem(PENDING_KEY);
+    sessionStorage.removeItem(PENDING_KEY);
+    const s = session.getSession();
+    if (pending && s && pending === accountFromUrl()) track('search', pending, null, { by: s.accountId });
+  } catch {
+    /* storage blocked */
+  }
+}
+
 // ---------------- wallet connection, profile, follows ----------------
 
 function returnPath() {
@@ -1455,6 +1544,7 @@ function avatarEl(account, cls = 'avatar') {
 function syncSession() {
   const s = session.getSession();
   const owner = s?.accountId || null;
+  if (!owner && state.account) openGate(state.account);
   feed.setFollows(owner, owner ? session.getFollows(owner) : []);
   renderAuth();
   if (state.account) renderAccountActions();
@@ -1858,12 +1948,14 @@ function init() {
   bindUI();
   bindSocial();
   bindLeaderboard();
+  bindGate();
   session.onChange(syncSession);
   syncSession();
   const s = session.getSession();
   // came back (once per 6 hours): a wallet session is a visit, a typed-in account stays 'manual'
   if (s) track(s.watchOnly ? 'manual' : 'visit', s.accountId, s.wallet);
   startTicker();
+  logPendingSearch();
   route();
   window.__nwmReady = true; // seen by boot.js: the app started
   try {

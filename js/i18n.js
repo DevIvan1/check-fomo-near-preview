@@ -56,6 +56,18 @@ export function applyStatic(root = document) {
 
 const DICT = {
   en: {
+    // ---- Sign-in gate ----
+    'gate.title': 'Sign in to view wallets',
+    'gate.sub': (acc) => (acc ? `Connect your wallet or enter your NEAR address, then ${acc} opens.` : 'Connect your wallet or enter your NEAR address.'),
+    'gate.connect': 'Connect wallet',
+    'gate.or': 'or enter your address',
+    'gate.yourAddress': 'Your NEAR address',
+    'gate.placeholder': 'your-account.near',
+    'gate.continue': 'Continue',
+    'gate.checking': 'Checking the account…',
+    'gate.netError': 'Network error, please try again.',
+    'gate.close': 'Close',
+    'gate.note': 'Check fomo only reads your address: no transactions, no approvals. The address is saved to the site’s usage log.',
     // ---- Leaderboard ----
     'lb.title': 'Top traders',
     'lb.refresh': 'Refresh the leaderboard',
@@ -411,6 +423,18 @@ const DICT = {
   },
 
   ru: {
+    // ---- Окно входа ----
+    'gate.title': 'Войдите, чтобы смотреть кошельки',
+    'gate.sub': (acc) => (acc ? `Подключите кошелёк или впишите свой адрес NEAR — после этого откроется ${acc}.` : 'Подключите кошелёк или впишите свой адрес NEAR.'),
+    'gate.connect': 'Подключить кошелёк',
+    'gate.or': 'или впишите свой адрес',
+    'gate.yourAddress': 'Ваш адрес NEAR',
+    'gate.placeholder': 'ваш-аккаунт.near',
+    'gate.continue': 'Продолжить',
+    'gate.checking': 'Проверяем аккаунт…',
+    'gate.netError': 'Ошибка сети, попробуйте ещё раз.',
+    'gate.close': 'Закрыть',
+    'gate.note': 'Check fomo только читает ваш адрес: никаких транзакций и подтверждений. Адрес сохраняется в журнал посещений сайта.',
     // ---- Рейтинг ----
     'lb.title': 'Топ трейдеров',
     'lb.refresh': 'Обновить рейтинг',

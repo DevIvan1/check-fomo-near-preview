@@ -4,7 +4,7 @@
 
 Follow NEAR traders live, FomoApp-style. Check fomo shows every buy, sell and transfer of any NEAR wallet as a post with its transaction hash. It adds PnL boards for 24h, 7d and 30d, a leaderboard of the top 100 meme-coin traders on NEAR, lets you connect your wallet and follow traders, and shows a live feed of the wallets you follow with loud sound alerts.
 
-The home page is just a search box. A wallet opens when you enter its address, and you can bookmark a wallet with `?account=name.near` in the URL.
+The home page is just a search box. Wallets are shown to signed-in visitors only: entering an address (or opening a `?account=name.near` link) without signing in shows a window that asks to connect a wallet or enter your own NEAR address, then the wanted wallet opens. This is a sign-in requirement for the site's own pages, not secrecy: all of this data is public on the NEAR blockchain.
 
 Created by [@Checker1crypto](https://x.com/Checker1crypto).
 
