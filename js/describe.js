@@ -1,9 +1,9 @@
 // Builds the human-readable post for an analysed transaction (texts come from i18n).
 // Pure apart from the current language: everything external comes through `ctx`.
 
-import { NEAR_ID, WNEAR, contractName, tokenFamily, explorer } from './config.js?v=ea9cb0bb';
-import { toNumber, toDecimalString, fmtNum, fmtUsd, fmtPct, shortAccount, shortHash, absBig, isImplicit } from './util.js?v=ea9cb0bb';
-import { t, tp, getLocale } from './i18n.js?v=ea9cb0bb';
+import { NEAR_ID, WNEAR, contractName, tokenFamily, explorer } from './config.js?v=d635dcb1';
+import { toNumber, toDecimalString, fmtNum, fmtUsd, fmtPct, shortAccount, shortHash, absBig, isImplicit } from './util.js?v=d635dcb1';
+import { t, tp, getLocale } from './i18n.js?v=d635dcb1';
 
 const GLYPHS = {
   transfer_in: '↓', transfer_out: '↑', ft_in: '↓', ft_out: '↑', receive_multi: '↓', debit: '↑',
@@ -119,18 +119,20 @@ function pnlValue(pct, near) {
   return pct === null || pct === undefined ? `${fmtNum(near, { sign: true })} NEAR` : `${fmtPct(pct)} (${fmtNum(near, { sign: true })} NEAR)`;
 }
 
-// PnL of a buy: live (tokens valued at the current pool price) while the wallet holds the token,
-// the realized result of the whole position once it is closed.
-function pnlLine(tr, now, f, ctx) {
-  if (ctx.positionOpen && ctx.positionOpen(tr.token) === false) {
-    const p = ctx.positionStats ? ctx.positionStats(tr.token) : null;
-    if (!p || !(p.nearIn > 0)) return { label: t('l.pnl'), value: t('closed') };
-    const pct = (p.realized / p.nearIn) * 100;
+// PnL of a buy: live (tokens valued at the current pool price) while its position is open,
+// the realized result of that position (cycle) once it is closed. A later re-buy of the same
+// token is a separate position and does not affect this one.
+function pnlLine(a, tr, now, f, ctx) {
+  const cyc = ctx.cycleStats ? ctx.cycleStats(tr.token, a.cycleId) : null;
+  if (cyc && cyc.closed) {
+    if (!(cyc.nearIn > 0)) return { label: t('l.pnl'), value: t('closed') };
+    const pct = (cyc.realized / cyc.nearIn) * 100;
     return {
-      label: t('l.pnl'), value: pnlValue(pct, p.realized), note: [usdText(p.realized, ctx), t('closed')].filter(Boolean).join(' · '),
-      tone: p.realized >= 0 ? 'up' : 'down',
+      label: t('l.pnl'), value: pnlValue(pct, cyc.realized), note: [usdText(cyc.realized, ctx), t('closed')].filter(Boolean).join(' · '),
+      tone: cyc.realized >= 0 ? 'up' : 'down',
     };
   }
+  if (!cyc && ctx.positionOpen && ctx.positionOpen(tr.token) === false) return { label: t('l.pnl'), value: t('closed') };
   if (!now) return null;
   const spent = f.num(tr.amountIn, NEAR_ID);
   const value = f.num(tr.amountOut, tr.token) * now;
@@ -194,7 +196,7 @@ export function describe(a, ctx) {
         }
       }
       if (tr.side === 'buy') {
-        const line = pnlLine(tr, ctx.priceNear ? ctx.priceNear(tr.token) : null, f, ctx);
+        const line = pnlLine(a, tr, ctx.priceNear ? ctx.priceNear(tr.token) : null, f, ctx);
         if (line) main.push(line);
       }
       if (a.realized && tr.side === 'sell') {

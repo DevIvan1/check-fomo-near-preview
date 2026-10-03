@@ -1,6 +1,6 @@
 // Static configuration: endpoints, known contracts and labels.
 
-import { t } from './i18n.js?v=ea9cb0bb';
+import { t } from './i18n.js?v=d635dcb1';
 
 export const TX_API = 'https://tx.main.fastnear.com/v0';
 export const FASTNEAR_API = 'https://api.fastnear.com/v1';

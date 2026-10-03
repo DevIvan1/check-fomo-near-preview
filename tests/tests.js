@@ -1,15 +1,15 @@
 // Browser test suite. Open tests/index.html through any static server.
 
-import { analyzeTx, parseLog, statusKind, failureMessage, fromRpcTxStatus } from '../js/parser.js?v=ea9cb0bb';
-import { describe, humanError } from '../js/describe.js?v=ea9cb0bb';
-import { computePositions, positionRows, accountStats, periodSummary, positionCards, positionsOverview } from '../js/positions.js?v=ea9cb0bb';
-import { normalizeAccount, shouldAlert, nearSize, soundKind } from '../js/rules.js?v=ea9cb0bb';
-import { toDecimalString, toNumber, fmtNum, big, shortHash, shortAccount, fmtPct, relTime } from '../js/util.js?v=ea9cb0bb';
-import { safeIcon, dclPrice, routePrice } from '../js/tokens.js?v=ea9cb0bb';
-import { NEAR_ID } from '../js/config.js?v=ea9cb0bb';
-import * as session from '../js/session.js?v=ea9cb0bb';
-import { FollowFeed, isFeedEvent } from '../js/following.js?v=ea9cb0bb';
-import { setLang, t, tp, dictKeys } from '../js/i18n.js?v=ea9cb0bb';
+import { analyzeTx, parseLog, statusKind, failureMessage, fromRpcTxStatus } from '../js/parser.js?v=d635dcb1';
+import { describe, humanError } from '../js/describe.js?v=d635dcb1';
+import { computePositions, positionRows, accountStats, periodSummary, positionCards, positionsOverview } from '../js/positions.js?v=d635dcb1';
+import { normalizeAccount, shouldAlert, nearSize, soundKind } from '../js/rules.js?v=d635dcb1';
+import { toDecimalString, toNumber, fmtNum, big, shortHash, shortAccount, fmtPct, relTime } from '../js/util.js?v=d635dcb1';
+import { safeIcon, dclPrice, routePrice } from '../js/tokens.js?v=d635dcb1';
+import { NEAR_ID } from '../js/config.js?v=d635dcb1';
+import * as session from '../js/session.js?v=d635dcb1';
+import { FollowFeed, isFeedEvent } from '../js/following.js?v=d635dcb1';
+import { setLang, t, tp, dictKeys } from '../js/i18n.js?v=d635dcb1';
 
 const ACC = 'hotfrog2879.near';
 const results = [];
@@ -502,7 +502,7 @@ async function main() {
     has(line.value, '+357,96 NEAR');
     has(line.note, '$');
     has(line.note, 'позиция закрыта');
-    const buy = describe(list[0], ctx({ positionOpen: () => false, positionStats: (tk) => pos.get(tk) }));
+    const buy = describe(list[0], ctx({ positionOpen: () => false, cycleStats: (tk, id) => pos.get(tk).cycles[id] }));
     const bl = buy.lines.find((l) => l.label === 'PnL');
     has(bl.value, '+199%');
     has(bl.value, '+357,96 NEAR');
@@ -590,6 +590,44 @@ async function main() {
     eq(unpriced.unpriced, true);
     eq(unpriced.unrealized, null);
     eq(unpriced.entryMcNear, null, 'без supply капы нет');
+  });
+  test('новая покупка после полного выхода — новая позиция, старый убыток не смешивается', () => {
+    // NEARLEE: bought for 200, sold for 151.81 (−48.19, closed); then bought again for 200 later
+    const rebuyRaw = structuredClone(fx.BUY_NEARLEE_MULTIHOP);
+    rebuyRaw.transaction.hash = 'SyntheticRebuyNearlee11111111111111111111111';
+    const later = fx.SELL_NEARLEE_MULTIHOP.execution_outcome;
+    rebuyRaw.execution_outcome.block_height = later.block_height + 1000;
+    rebuyRaw.execution_outcome.block_timestamp = String(BigInt(later.block_timestamp) + 600000000000n);
+    const list = [A('BUY_NEARLEE_MULTIHOP'), A('SELL_NEARLEE_MULTIHOP'), analyzeTx(rebuyRaw, ACC)];
+    const pos = computePositions(list, { decimals, launchToken: () => null });
+    const p = pos.get('nearlee.nearlytrade.near');
+    eq(p.cycles.length, 2, 'две позиции');
+    eq(p.cycles[0].closed, true);
+    approx(p.cycles[0].realized, 151.808508 - 200, 1e-4);
+    eq(p.cycles[1].closed, false);
+    eq(p.cycles[1].realized, 0, 'у новой позиции нет старого убытка');
+    approx(p.cycles[1].nearIn, 200, 1e-6);
+    eq(list[0].cycleId, 0);
+    eq(list[2].cycleId, 1);
+    approx(p.cost, 200, 1e-6, 'себестоимость текущей позиции — только новая покупка');
+    const cards = positionCards(pos, { balance: () => null, priceNear: () => 0.00001, supply: () => 1e9 });
+    eq(cards.length, 2);
+    const open = cards.find((c) => c.open);
+    const closed = cards.find((c) => !c.open);
+    eq(open.realized, 0);
+    approx(open.invested, 200, 1e-6);
+    approx(open.unrealized, open.held * 0.00001 - 200, 1e-6);
+    approx(open.total, open.unrealized, 1e-9, 'итог открытой = только её нереализованный');
+    approx(closed.realized, 151.808508 - 200, 1e-4);
+    approx(closed.returned, 151.808508, 1e-4);
+    eq(open.cycles, 2);
+    // posts: the old buy shows its closed result, the new buy shows live PnL
+    const cx = ctx({ priceNear: () => 0.00001, cycleStats: (tk, id) => pos.get(tk).cycles[id] });
+    const oldBuy = describe(list[0], cx).lines.find((l) => l.label === 'PnL');
+    has(oldBuy.value, '−24%');
+    has(oldBuy.note, 'позиция закрыта');
+    const newBuy = describe(list[2], cx).lines.find((l) => l.label === 'PnL');
+    eq(newBuy.live, true, 'новая покупка — живой PnL');
   });
   test('stats', () => {
     const list = ['BUY_NEARLEE_MULTIHOP', 'SELL_NEARLEE_MULTIHOP', 'FUNDING', 'PAYOUT_NEAR', 'FAILED_BUY_SYNTHETIC'].map((k) => A(k));

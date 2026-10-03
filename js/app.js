@@ -1,20 +1,20 @@
 // UI + live polling loop.
 
-import { DEFAULT_SETTINGS, HISTORY_PAGE, POLL_PAGE, NEAR_ID, WNEAR, explorer } from './config.js?v=ea9cb0bb';
-import { normalizeAccount, shouldAlert, soundKind } from './rules.js?v=ea9cb0bb';
-import * as api from './api.js?v=ea9cb0bb';
-import * as tokens from './tokens.js?v=ea9cb0bb';
-import { analyzeTx } from './parser.js?v=ea9cb0bb';
-import { describe, tokenLinks } from './describe.js?v=ea9cb0bb';
-import { computePositions, periodSummary, positionCards, positionsOverview } from './positions.js?v=ea9cb0bb';
-import * as alerts from './alerts.js?v=ea9cb0bb';
+import { DEFAULT_SETTINGS, HISTORY_PAGE, POLL_PAGE, NEAR_ID, WNEAR, explorer } from './config.js?v=d635dcb1';
+import { normalizeAccount, shouldAlert, soundKind } from './rules.js?v=d635dcb1';
+import * as api from './api.js?v=d635dcb1';
+import * as tokens from './tokens.js?v=d635dcb1';
+import { analyzeTx } from './parser.js?v=d635dcb1';
+import { describe, tokenLinks } from './describe.js?v=d635dcb1';
+import { computePositions, periodSummary, positionCards, positionsOverview } from './positions.js?v=d635dcb1';
+import * as alerts from './alerts.js?v=d635dcb1';
 import {
   fmtNum, fmtUsd, fmtUsdCompact, fmtPct, relTime, fmtTime, fmtDateTime, dayLabel, toNumber, shortAccount,
   storageGet, storageSet, toDecimalString,
-} from './util.js?v=ea9cb0bb';
-import { t, tp, setLang, getLocale, applyStatic } from './i18n.js?v=ea9cb0bb';
-import * as session from './session.js?v=ea9cb0bb';
-import { FollowFeed } from './following.js?v=ea9cb0bb';
+} from './util.js?v=d635dcb1';
+import { t, tp, setLang, getLocale, applyStatic } from './i18n.js?v=d635dcb1';
+import * as session from './session.js?v=d635dcb1';
+import { FollowFeed } from './following.js?v=d635dcb1';
 
 const $ = (sel) => document.querySelector(sel);
 const SETTINGS_KEY = 'nwm.settings.v1';
@@ -467,7 +467,7 @@ function describeCtx() {
     launchToken: tokens.launchToken,
     supply: tokens.supply,
     positionOpen,
-    positionStats: (token) => state.positions.get(token) || null,
+    cycleStats: (token, id) => (id === undefined || id === null ? null : state.positions.get(token)?.cycles?.[id] || null),
   };
 }
 
@@ -794,7 +794,7 @@ function onTick() {
 
 function startTicker() {
   try {
-    const w = new Worker(new URL('./ticker.js?v=ea9cb0bb', import.meta.url));
+    const w = new Worker(new URL('./ticker.js?v=d635dcb1', import.meta.url));
     w.onmessage = onTick;
     w.postMessage({ cmd: 'start', ms: 500 });
   } catch {
@@ -879,7 +879,7 @@ function renderCounts() {
     counts[a.category] = (counts[a.category] || 0) + 1;
     if (!((a.kind === 'payout' && !s.showPayouts) || (a.kind === 'mention' && !s.showMentions))) counts.all += 1;
   }
-  counts.positions = [...state.positions.values()].filter((p) => p.buys || p.sells).length;
+  counts.positions = [...state.positions.values()].reduce((n, p) => n + p.cycles.filter((c) => c.buys || c.sells).length, 0);
   document.querySelectorAll('[data-count]').forEach((n) => {
     const v = counts[n.dataset.count] || 0;
     n.textContent = v ? String(v) : '';
@@ -1095,7 +1095,6 @@ function renderPositionsView() {
   const cards = positionCards(state.positions, {
     balance: liveBalance,
     priceNear: tokens.priceNear,
-    isOpen: positionOpen,
     supply: (tk) => {
       const raw = tokens.supply(tk);
       const dec = tokens.decimals(tk);
@@ -1116,33 +1115,39 @@ function renderPositionsView() {
     el('div', {}, el('dt', {}, t('pos.winRate')), el('dd', {}, o.winRate !== null ? fmtPct(o.winRate, { sign: false }) : '—', el('small', {}, t('pos.counts', { o: o.open, c: o.closed })))),
     el('div', {}, el('dt', {}, t('pos.avgHold')), el('dd', {}, fmtDuration(o.avgHoldMs), el('small', {}, `${o.trades} ${tp('tradeWord', o.trades)}`))));
 
+  const nearUsd = (near) => (usd && near !== null && near !== undefined ? fmtUsd(near * usd) : '');
   const list = cards.map((c) => {
     const sym = tokens.meta(c.token)?.symbol || c.token;
     const real = pnlCell(c.realized, { empty: !c.sells });
     const unreal = pnlCell(c.unrealized, { empty: !c.open });
     const totalTone = c.unpriced ? 'muted' : tone(c.total);
     const foot = [
-      t('pos.invested', fmtNum(c.invested)),
-      c.returned ? t('pos.returned', fmtNum(c.returned)) : null,
-      c.open ? t('pos.holding', { q: fmtNum(c.held), v: c.valueNear !== null ? fmtNum(c.valueNear) : null }) : null,
+      c.open ? t('pos.holding', { q: fmtNum(c.held), v: null }) : null,
       c.payoutsNear ? t('pos.payouts', fmtNum(c.payoutsNear)) : null,
       (c.open ? t('pos.holdingFor', fmtDuration(c.holdMs)) : t('pos.held', fmtDuration(c.holdMs))),
       `${c.buys} ${tp('buyWord', c.buys)} · ${c.sells} ${tp('sellWord', c.sells)}`,
     ].filter(Boolean).join(' · ');
-    const cell = (label, value, small = '', cls = '') => el('div', {}, el('dt', {}, label), el('dd', { class: cls }, value, small ? el('small', {}, small) : null));
+    const cell = (label, value, sub = '', cls = '') => el('div', {}, el('dt', {}, label), el('dd', { class: cls }, value, sub ? el('span', { class: 'sub' }, sub) : null));
+    const size = c.open
+      ? cell(t('pos.valueLbl'), c.valueNear !== null ? `${fmtNum(c.valueNear)} NEAR` : '…', c.valueNear !== null ? nearUsd(c.valueNear) : t('pos.priceLoading'))
+      : cell(t('pos.returnedLbl'), `${fmtNum(c.returned)} NEAR`, nearUsd(c.returned));
     return el('article', { class: `pos-card ${c.open ? 'is-open' : 'is-closed'}` },
       el('div', { class: 'pc-head' },
         tokenIcon(c.token, 'pos-icon'),
         el('div', { class: 'pc-title' },
           el('button', { type: 'button', class: 'pc-sym', title: t('showTradesOf', sym), onclick: () => setSearch(sym) }, sym),
-          el('span', { class: `pc-status ${c.open ? 'open' : 'closed'}` }, t(c.open ? 'pos.open' : 'pos.closed'))),
+          el('span', { class: `pc-status ${c.open ? 'open' : 'closed'}` }, t(c.open ? 'pos.open' : 'pos.closed')),
+          c.cycles > 1 ? el('span', { class: 'pc-entry' }, t('pos.entryN', c.cycle + 1)) : null),
         el('div', { class: `pc-total ${totalTone}` },
           c.unpriced ? '…' : `${fmtNum(c.total, { sign: true })} NEAR`,
-          el('small', {}, c.unpriced ? t('pos.priceLoading') : [usdOf(c.total), c.pct !== null ? fmtPct(c.pct) : null].filter(Boolean).join(' · ')))),
+          el('span', { class: 'sub' }, c.unpriced ? t('pos.priceLoading') : [usdOf(c.total), c.pct !== null ? fmtPct(c.pct) : null].filter(Boolean).join(' · ')))),
       el('dl', { class: 'pc-grid' },
+        // columns: entry (invested, entry cap) · now (value or returned, cap now or at exit) · PnL
+        cell(t('pos.investedLbl'), `${fmtNum(c.invested)} NEAR`, nearUsd(c.invested)),
+        size,
+        cell(t('pos.realized'), real.value, real.small, real.tone),
         cell(t('pos.entryMc'), mcText(c.entryMcNear)),
         c.open ? cell(t('pos.nowMc'), mcText(c.nowMcNear)) : cell(t('pos.exitMc'), mcText(c.exitMcNear)),
-        cell(t('pos.realized'), real.value, real.small, real.tone),
         cell(t('pos.unrealized'), unreal.value, unreal.small, unreal.tone)),
       el('div', { class: 'pc-foot' }, foot));
   });
@@ -1521,7 +1526,7 @@ function renderPnlBoard() {
 }
 
 function ctxFollow() {
-  return { ...describeCtx(), positionOpen: () => null, positionStats: () => null };
+  return { ...describeCtx(), positionOpen: () => null, cycleStats: () => null };
 }
 
 function renderFollowPanel() {
