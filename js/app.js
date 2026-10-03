@@ -1,20 +1,20 @@
 // UI + live polling loop.
 
-import { DEFAULT_SETTINGS, HISTORY_PAGE, POLL_PAGE, NEAR_ID, WNEAR, explorer } from './config.js?v=d635dcb1';
-import { normalizeAccount, shouldAlert, soundKind } from './rules.js?v=d635dcb1';
-import * as api from './api.js?v=d635dcb1';
-import * as tokens from './tokens.js?v=d635dcb1';
-import { analyzeTx } from './parser.js?v=d635dcb1';
-import { describe, tokenLinks } from './describe.js?v=d635dcb1';
-import { computePositions, periodSummary, positionCards, positionsOverview } from './positions.js?v=d635dcb1';
-import * as alerts from './alerts.js?v=d635dcb1';
+import { DEFAULT_SETTINGS, HISTORY_PAGE, POLL_PAGE, NEAR_ID, WNEAR, explorer } from './config.js?v=b0fe6885';
+import { normalizeAccount, shouldAlert, soundKind } from './rules.js?v=b0fe6885';
+import * as api from './api.js?v=b0fe6885';
+import * as tokens from './tokens.js?v=b0fe6885';
+import { analyzeTx } from './parser.js?v=b0fe6885';
+import { describe, tokenLinks } from './describe.js?v=b0fe6885';
+import { computePositions, periodSummary, positionCards, positionsOverview, sortPositionCards } from './positions.js?v=b0fe6885';
+import * as alerts from './alerts.js?v=b0fe6885';
 import {
-  fmtNum, fmtUsd, fmtUsdCompact, fmtPct, relTime, fmtTime, fmtDateTime, dayLabel, toNumber, shortAccount,
+  fmtNum, fmtUsd, fmtUsdCompact, fmtPct, fmtDateShort, relTime, fmtTime, fmtDateTime, dayLabel, toNumber, shortAccount,
   storageGet, storageSet, toDecimalString,
-} from './util.js?v=d635dcb1';
-import { t, tp, setLang, getLocale, applyStatic } from './i18n.js?v=d635dcb1';
-import * as session from './session.js?v=d635dcb1';
-import { FollowFeed } from './following.js?v=d635dcb1';
+} from './util.js?v=b0fe6885';
+import { t, tp, setLang, getLocale, applyStatic } from './i18n.js?v=b0fe6885';
+import * as session from './session.js?v=b0fe6885';
+import { FollowFeed } from './following.js?v=b0fe6885';
 
 const $ = (sel) => document.querySelector(sel);
 const SETTINGS_KEY = 'nwm.settings.v1';
@@ -794,7 +794,7 @@ function onTick() {
 
 function startTicker() {
   try {
-    const w = new Worker(new URL('./ticker.js?v=d635dcb1', import.meta.url));
+    const w = new Worker(new URL('./ticker.js?v=b0fe6885', import.meta.url));
     w.onmessage = onTick;
     w.postMessage({ cmd: 'start', ms: 500 });
   } catch {
@@ -1116,7 +1116,22 @@ function renderPositionsView() {
     el('div', {}, el('dt', {}, t('pos.avgHold')), el('dd', {}, fmtDuration(o.avgHoldMs), el('small', {}, `${o.trades} ${tp('tradeWord', o.trades)}`))));
 
   const nearUsd = (near) => (usd && near !== null && near !== undefined ? fmtUsd(near * usd) : '');
-  const list = cards.map((c) => {
+  const sortBy = state.settings.posSort === 'size' ? 'size' : 'date';
+  const sortDir = state.settings.posDir === 'asc' ? 'asc' : 'desc';
+  const sortBar = el('div', { class: 'po-sort' },
+    el('span', { class: 'muted small' }, t('pos.sort')),
+    el('div', { class: 'seg seg-sm', role: 'radiogroup', 'aria-label': t('pos.sort') },
+      [['date', 'pos.sortDate', 'pos.sortDateHint'], ['size', 'pos.sortSize', 'pos.sortSizeHint']].map(([key, label, hint]) => el('button', {
+        type: 'button', role: 'radio', 'aria-checked': String(sortBy === key), class: sortBy === key ? 'on' : '', title: t(hint),
+        onclick: () => {
+          // a second click on the active option flips the direction
+          state.settings.posDir = sortBy === key && sortDir === 'desc' ? 'asc' : 'desc';
+          state.settings.posSort = key;
+          saveSettings();
+          renderPositionsView();
+        },
+      }, `${t(label)}${sortBy === key ? (sortDir === 'desc' ? ' ↓' : ' ↑') : ''}`))));
+  const list = sortPositionCards(cards, sortBy, sortDir).map((c) => {
     const sym = tokens.meta(c.token)?.symbol || c.token;
     const real = pnlCell(c.realized, { empty: !c.sells });
     const unreal = pnlCell(c.unrealized, { empty: !c.open });
@@ -1124,6 +1139,7 @@ function renderPositionsView() {
     const foot = [
       c.open ? t('pos.holding', { q: fmtNum(c.held), v: null }) : null,
       c.payoutsNear ? t('pos.payouts', fmtNum(c.payoutsNear)) : null,
+      t('pos.opened', fmtDateShort(c.firstTs)),
       (c.open ? t('pos.holdingFor', fmtDuration(c.holdMs)) : t('pos.held', fmtDuration(c.holdMs))),
       `${c.buys} ${tp('buyWord', c.buys)} · ${c.sells} ${tp('sellWord', c.sells)}`,
     ].filter(Boolean).join(' · ');
@@ -1151,7 +1167,7 @@ function renderPositionsView() {
         cell(t('pos.unrealized'), unreal.value, unreal.small, unreal.tone)),
       el('div', { class: 'pc-foot' }, foot));
   });
-  box.replaceChildren(head, ...list, el('p', { class: 'panel-note muted small' }, t('pos.note')));
+  box.replaceChildren(head, sortBar, ...list, el('p', { class: 'panel-note muted small' }, t('pos.note')));
 }
 
 function renderSummary() {

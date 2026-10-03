@@ -1,15 +1,15 @@
 // Browser test suite. Open tests/index.html through any static server.
 
-import { analyzeTx, parseLog, statusKind, failureMessage, fromRpcTxStatus } from '../js/parser.js?v=d635dcb1';
-import { describe, humanError } from '../js/describe.js?v=d635dcb1';
-import { computePositions, positionRows, accountStats, periodSummary, positionCards, positionsOverview } from '../js/positions.js?v=d635dcb1';
-import { normalizeAccount, shouldAlert, nearSize, soundKind } from '../js/rules.js?v=d635dcb1';
-import { toDecimalString, toNumber, fmtNum, big, shortHash, shortAccount, fmtPct, relTime } from '../js/util.js?v=d635dcb1';
-import { safeIcon, dclPrice, routePrice } from '../js/tokens.js?v=d635dcb1';
-import { NEAR_ID } from '../js/config.js?v=d635dcb1';
-import * as session from '../js/session.js?v=d635dcb1';
-import { FollowFeed, isFeedEvent } from '../js/following.js?v=d635dcb1';
-import { setLang, t, tp, dictKeys } from '../js/i18n.js?v=d635dcb1';
+import { analyzeTx, parseLog, statusKind, failureMessage, fromRpcTxStatus } from '../js/parser.js?v=b0fe6885';
+import { describe, humanError } from '../js/describe.js?v=b0fe6885';
+import { computePositions, positionRows, accountStats, periodSummary, positionCards, positionsOverview, sortPositionCards } from '../js/positions.js?v=b0fe6885';
+import { normalizeAccount, shouldAlert, nearSize, soundKind } from '../js/rules.js?v=b0fe6885';
+import { toDecimalString, toNumber, fmtNum, big, shortHash, shortAccount, fmtPct, relTime } from '../js/util.js?v=b0fe6885';
+import { safeIcon, dclPrice, routePrice } from '../js/tokens.js?v=b0fe6885';
+import { NEAR_ID } from '../js/config.js?v=b0fe6885';
+import * as session from '../js/session.js?v=b0fe6885';
+import { FollowFeed, isFeedEvent } from '../js/following.js?v=b0fe6885';
+import { setLang, t, tp, dictKeys } from '../js/i18n.js?v=b0fe6885';
 
 const ACC = 'hotfrog2879.near';
 const results = [];
@@ -628,6 +628,18 @@ async function main() {
     has(oldBuy.note, 'позиция закрыта');
     const newBuy = describe(list[2], cx).lines.find((l) => l.label === 'PnL');
     eq(newBuy.live, true, 'новая покупка — живой PnL');
+  });
+  test('сортировка позиций: по дате открытия и по сумме, в обе стороны', () => {
+    const cards = [
+      { token: 'a', firstTs: 100, invested: 50 },
+      { token: 'b', firstTs: 300, invested: 10 },
+      { token: 'c', firstTs: 200, invested: 500 },
+    ];
+    eq(sortPositionCards(cards, 'date', 'desc').map((c) => c.token).join(''), 'bca', 'новые сверху');
+    eq(sortPositionCards(cards, 'date', 'asc').map((c) => c.token).join(''), 'acb');
+    eq(sortPositionCards(cards, 'size', 'desc').map((c) => c.token).join(''), 'cab', 'крупные сверху');
+    eq(sortPositionCards(cards, 'size', 'asc').map((c) => c.token).join(''), 'bac');
+    eq(cards.map((c) => c.token).join(''), 'abc', 'исходный массив не меняется');
   });
   test('stats', () => {
     const list = ['BUY_NEARLEE_MULTIHOP', 'SELL_NEARLEE_MULTIHOP', 'FUNDING', 'PAYOUT_NEAR', 'FAILED_BUY_SYNTHETIC'].map((k) => A(k));

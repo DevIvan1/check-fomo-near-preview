@@ -1,6 +1,6 @@
 // Pure helpers: encoding, BigInt math, number and time formatting (locale follows the UI language).
 
-import { t, getLocale } from './i18n.js?v=d635dcb1';
+import { t, getLocale } from './i18n.js?v=b0fe6885';
 
 export function b64ToText(b64) {
   if (typeof b64 !== 'string') return null;
@@ -147,6 +147,10 @@ export function relTime(ms, now = Date.now()) {
 
 export function fmtTime(ms) {
   return new Date(ms).toLocaleTimeString(getLocale(), { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+}
+
+export function fmtDateShort(ms) {
+  return new Date(ms).toLocaleString(getLocale(), { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false });
 }
 
 export function fmtDateTime(ms) {

@@ -522,3 +522,6 @@ body.is-landing .top-actions { margin-left: 0; }
   .po-head, .pc-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .pc-total { font-size: 15px; }
 }
+
+.po-sort { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+.po-sort .seg button { font-variant-numeric: tabular-nums; }

@@ -1,7 +1,7 @@
 // Per-token position tracking (average-cost method) and account-level stats.
 
-import { NEAR_ID, WNEAR } from './config.js?v=d635dcb1';
-import { toNumber } from './util.js?v=d635dcb1';
+import { NEAR_ID, WNEAR } from './config.js?v=b0fe6885';
+import { toNumber } from './util.js?v=b0fe6885';
 
 const byChainOrder = (x, y) => (x.blockHeight ?? 0) - (y.blockHeight ?? 0) || (x.txIndex ?? 0) - (y.txIndex ?? 0);
 
@@ -294,6 +294,13 @@ export function positionCards(pos, live, now = Date.now()) {
   }
   cards.sort((x, y) => (y.open - x.open) || (y.closedTs ?? y.lastTs ?? 0) - (x.closedTs ?? x.lastTs ?? 0));
   return cards;
+}
+
+// Sorting for the Positions tab. by: 'date' (when the position was opened) | 'size' (invested NEAR).
+export function sortPositionCards(cards, by = 'date', dir = 'desc') {
+  const key = by === 'size' ? (c) => c.invested : (c) => c.firstTs ?? 0;
+  const sign = dir === 'asc' ? 1 : -1;
+  return cards.slice().sort((x, y) => sign * (key(x) - key(y)) || (y.firstTs ?? 0) - (x.firstTs ?? 0));
 }
 
 // Profile header for the Positions tab: totals, win rate on closed positions, average hold time.

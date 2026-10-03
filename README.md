@@ -25,7 +25,7 @@ Created by [@Checker1crypto](https://x.com/Checker1crypto).
   - realized and unrealized PnL in NEAR and USD, total PnL with % on invested;
   - tokens held, holder payouts, hold time, number of buys and sells.
 
-  Cards refresh live with the pool price. The right column now holds only the following feed.
+  Sort by date opened or by size (invested amount); click the active option again to reverse. Cards refresh live with the pool price. The right column now holds only the following feed.
 - **Louder, longer alerts.** Three-note sounds through a compressor: rising for buys, falling for sells.
 
 ## Features
@@ -71,7 +71,7 @@ python -m http.server 8000
 ```
 
 - **App:** http://localhost:8000/
-- **Tests:** http://localhost:8000/tests/ (62 tests: parser, both languages, PnL and summary, backup-source conversion, alert rules, XSS safety). `tests/` and `tools/` are not deployed to Vercel (see `.vercelignore`).
+- **Tests:** http://localhost:8000/tests/ (63 tests: parser, both languages, PnL and summary, backup-source conversion, alert rules, XSS safety). `tests/` and `tools/` are not deployed to Vercel (see `.vercelignore`).
 
 Before every commit, stamp the module versions:
 

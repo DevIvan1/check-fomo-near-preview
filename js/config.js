@@ -1,6 +1,6 @@
 // Static configuration: endpoints, known contracts and labels.
 
-import { t } from './i18n.js?v=d635dcb1';
+import { t } from './i18n.js?v=b0fe6885';
 
 export const TX_API = 'https://tx.main.fastnear.com/v0';
 export const FASTNEAR_API = 'https://api.fastnear.com/v1';
@@ -45,6 +45,8 @@ export const DEFAULT_SETTINGS = {
   showPayouts: true,
   showMentions: false,
   summaryDays: 1, // 1 | 7 | 30
+  posSort: 'date', // 'date' | 'size'
+  posDir: 'desc', // 'desc' | 'asc'
 };
 
 // Known contracts. kind: dex | launchpad | wrap | lending | wallet
