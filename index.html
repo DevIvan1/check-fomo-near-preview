@@ -8,10 +8,10 @@
   <meta name="description" content="Check fomo: follow NEAR traders live. Every buy, sell and transfer as it happens, PnL for 24h, 7d and 30d, a feed of the wallets you follow and sound alerts.">
   <meta name="color-scheme" content="light dark">
   <meta name="author" content="@Checker1crypto (https://x.com/Checker1crypto)">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; worker-src 'self'; style-src 'self'; img-src 'self' data: https:; connect-src https://tx.main.fastnear.com https://api.fastnear.com https://rpc.mainnet.fastnear.com https://near.drpc.org https://rpc.shitzuapes.xyz https://free.rpc.fastnear.com https://rpc.mainnet.near.org https://archival-rpc.mainnet.fastnear.com https://api.nearblocks.io https://nearly.trade https://prices.intear.tech https://api.ref.finance; base-uri 'none'; form-action 'self'; object-src 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; worker-src 'self'; style-src 'self'; img-src 'self' data: https:; connect-src https://tx.main.fastnear.com https://api.fastnear.com https://rpc.mainnet.fastnear.com https://near.drpc.org https://rpc.shitzuapes.xyz https://free.rpc.fastnear.com https://rpc.mainnet.near.org https://archival-rpc.mainnet.fastnear.com https://api.nearblocks.io https://nearly.trade https://prices.intear.tech https://events-v3.intear.tech https://api.ref.finance; base-uri 'none'; form-action 'self'; object-src 'none'">
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
-  <script src="js/boot.js?v=b0fe6885"></script>
-  <link rel="stylesheet" href="css/style.css?v=b0fe6885">
+  <script src="js/boot.js?v=25dbfcb0"></script>
+  <link rel="stylesheet" href="css/style.css?v=25dbfcb0">
 </head>
 <body>
   <header class="topbar">
@@ -54,6 +54,34 @@
   </section>
 
   <main class="layout" id="app" hidden>
+    <aside class="lb-col" aria-label="Top traders" data-i18n-aria="lb.title">
+      <details class="lb-wrap" id="lbWrap" open>
+        <summary class="lb-summary" data-i18n="lb.title">Top traders</summary>
+        <section class="panel lb-panel" id="lbPanel">
+          <div class="lb-top">
+            <h2 class="panel-title lb-title" data-i18n="lb.title">Top traders</h2>
+            <button class="btn btn-icon lb-refresh" id="lbRefresh" type="button" title="Refresh the leaderboard" data-i18n-title="lb.refresh" data-i18n-aria="lb.refresh"></button>
+            <div class="lb-controls">
+              <div class="seg seg-sm" id="lbPeriod" role="radiogroup" aria-label="Period" data-i18n-aria="lb.period">
+                <button type="button" role="radio" data-lbw="24h" data-i18n="lb.24h">24h</button>
+                <button type="button" role="radio" data-lbw="7d" data-i18n="lb.7d">7d</button>
+                <button type="button" role="radio" data-lbw="30d" data-i18n="lb.30d">30d</button>
+              </div>
+              <div class="seg seg-sm" id="lbSort" role="radiogroup" aria-label="Rank by" data-i18n-aria="lb.sort">
+                <button type="button" role="radio" data-lbs="pnl" title="Profit in USD" data-i18n="lb.byPnl" data-i18n-title="lb.byPnlHint">PnL</button>
+                <button type="button" role="radio" data-lbs="roi" title="Profit relative to the amount invested" data-i18n="lb.byRoi" data-i18n-title="lb.byRoiHint">ROI</button>
+              </div>
+            </div>
+          </div>
+          <div class="lb-progress" id="lbProgress" hidden><span></span></div>
+          <div class="lb-status" id="lbStatus" aria-live="polite"></div>
+          <ol class="lb-list" id="lbList"></ol>
+          <p class="lb-partial" id="lbPartial" data-i18n="lb.partial" hidden>Some sources did not respond: the board may be incomplete.</p>
+          <p class="lb-note" data-i18n="lb.note"></p>
+        </section>
+      </details>
+    </aside>
+
     <section class="account-card" id="accountCard" aria-label="Account" data-i18n-aria="account">
       <div class="account-head">
         <div class="account-main">
@@ -189,9 +217,9 @@
 
   <footer class="footer small">
     <div class="credit"><span data-i18n="createdBy">created by</span> <a href="https://x.com/Checker1crypto" target="_blank" rel="noopener noreferrer">@Checker1crypto</a></div>
-    <div class="sources muted" data-i18n="sources">Data: FastNEAR (transactions, balances), NEAR RPC, Nearly API, Intear / Rhea (prices). Everything runs in your browser, no server.</div>
+    <div class="sources muted" data-i18n="sources">Data: FastNEAR (transactions, balances), NEAR RPC, Nearly API, Intear (prices, swaps), Rhea (prices, pools). Everything runs in your browser, no server.</div>
   </footer>
 
-  <script type="module" src="js/app.js?v=b0fe6885"></script>
+  <script type="module" src="js/app.js?v=25dbfcb0"></script>
 </body>
 </html>

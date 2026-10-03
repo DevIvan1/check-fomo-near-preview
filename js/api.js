@@ -1,8 +1,8 @@
 // Network layer: FastNEAR tx API, NEAR RPC, FastNEAR balances, Nearly and price APIs.
 
-import { TX_API, FASTNEAR_API, RPC_URLS, RPC_FAST, RPC_ARCHIVAL, NEARBLOCKS_API, NEARLY_API, INTEAR_PRICES, REF_PRICES, FASTNEAR_API_KEY } from './config.js?v=b0fe6885';
-import { fromRpcTxStatus } from './parser.js?v=b0fe6885';
-import { sleep, chunk } from './util.js?v=b0fe6885';
+import { TX_API, FASTNEAR_API, RPC_URLS, RPC_FAST, RPC_ARCHIVAL, NEARBLOCKS_API, NEARLY_API, INTEAR_PRICES, REF_PRICES, INTEAR_EVENTS, REF_API, FASTNEAR_API_KEY } from './config.js?v=25dbfcb0';
+import { fromRpcTxStatus } from './parser.js?v=25dbfcb0';
+import { sleep, chunk } from './util.js?v=25dbfcb0';
 
 export class HttpError extends Error {
   constructor(status, url) {
@@ -202,4 +202,37 @@ export async function intearPrice(tokenId) {
 
 export async function refPriceList() {
   return fetchJson(REF_PRICES, { timeout: 15000, retries: 1 });
+}
+
+// ---- Leaderboard sources ----
+
+// Nearly's own trader ranking: window '24h' | '7d' | '30d' -> { traders, updated, rows: [...] } (top 100 by PnL).
+export async function nearlyTraders(window) {
+  return fetchJson(`${NEARLY_API}/traders?w=${encodeURIComponent(window)}`, { timeout: 12000, retries: 1 });
+}
+
+// One wallet on Nearly: per-token PnL with the first buy time of each token.
+export async function nearlyTrader(accountId) {
+  return fetchJson(`${NEARLY_API}/trader/${encodeURIComponent(accountId)}`, { timeout: 10000, retries: 1 });
+}
+
+// Rhea pools sorted by 24h volume (USD): where the active tokens are.
+export async function refTopPools(limit = 150) {
+  const r = await fetchJson(`${REF_API}/pool/search?type=all&sort=24h&limit=${limit}&offset=0&hide_low_pool=false&order_by=desc&labels=&token_type=&token_list=&pool_id_list=`, { timeout: 15000, retries: 1 });
+  return r?.data?.list || [];
+}
+
+// Every token Intear prices: { token: { price (USD per whole token), symbol, decimal } }.
+export async function intearTokenList() {
+  return fetchJson(`${INTEAR_PRICES}/list-token-price`, { timeout: 20000, retries: 1 });
+}
+
+// The latest 50 swaps of a token / of a trader: [{ trader, balance_changes, block_timestamp_nanosec, … }].
+// Rarely traded tokens make Intear scan far back and answer slowly, so these give up early.
+export async function intearSwapsByToken(tokenId, { timeout = 9000 } = {}) {
+  return fetchJson(`${INTEAR_EVENTS}/trade_swap/by_token_newest?account=${encodeURIComponent(tokenId)}`, { timeout, retries: 0 });
+}
+
+export async function intearSwapsByTrader(accountId) {
+  return fetchJson(`${INTEAR_EVENTS}/trade_swap/by_trader_newest?trader=${encodeURIComponent(accountId)}`, { timeout: 10000, retries: 1 });
 }

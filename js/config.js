@@ -1,6 +1,6 @@
 // Static configuration: endpoints, known contracts and labels.
 
-import { t } from './i18n.js?v=b0fe6885';
+import { t } from './i18n.js?v=25dbfcb0';
 
 export const TX_API = 'https://tx.main.fastnear.com/v0';
 export const FASTNEAR_API = 'https://api.fastnear.com/v1';
@@ -21,6 +21,9 @@ export const NEARBLOCKS_API = 'https://api.nearblocks.io/v1';
 export const NEARLY_API = 'https://nearly.trade/api';
 export const INTEAR_PRICES = 'https://prices.intear.tech';
 export const REF_PRICES = 'https://api.ref.finance/list-token-price';
+// Leaderboard: Intear's public swap history and Rhea's pool list (24h volume).
+export const INTEAR_EVENTS = 'https://events-v3.intear.tech/v3';
+export const REF_API = 'https://api.ref.finance';
 
 // Optional FastNEAR *browser* key (see https://docs.fastnear.com/auth), restricted to your
 // site's domain. Without it the public anonymous limits apply. Never put a server key here.
@@ -47,6 +50,8 @@ export const DEFAULT_SETTINGS = {
   summaryDays: 1, // 1 | 7 | 30
   posSort: 'date', // 'date' | 'size'
   posDir: 'desc', // 'desc' | 'asc'
+  lbWindow: '7d', // leaderboard period: '24h' | '7d' | '30d'
+  lbSort: 'pnl', // 'pnl' | 'roi'
 };
 
 // Known contracts. kind: dex | launchpad | wrap | lending | wallet

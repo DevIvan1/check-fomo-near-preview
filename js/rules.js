@@ -1,6 +1,6 @@
 // Small pure rules shared by the app and the tests.
 
-import { toNumber } from './util.js?v=b0fe6885';
+import { toNumber } from './util.js?v=25dbfcb0';
 
 export function normalizeAccount(s) {
   if (!s) return null;

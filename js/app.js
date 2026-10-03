@@ -1,20 +1,21 @@
 // UI + live polling loop.
 
-import { DEFAULT_SETTINGS, HISTORY_PAGE, POLL_PAGE, NEAR_ID, WNEAR, explorer } from './config.js?v=b0fe6885';
-import { normalizeAccount, shouldAlert, soundKind } from './rules.js?v=b0fe6885';
-import * as api from './api.js?v=b0fe6885';
-import * as tokens from './tokens.js?v=b0fe6885';
-import { analyzeTx } from './parser.js?v=b0fe6885';
-import { describe, tokenLinks } from './describe.js?v=b0fe6885';
-import { computePositions, periodSummary, positionCards, positionsOverview, sortPositionCards } from './positions.js?v=b0fe6885';
-import * as alerts from './alerts.js?v=b0fe6885';
+import { DEFAULT_SETTINGS, HISTORY_PAGE, POLL_PAGE, NEAR_ID, WNEAR, explorer } from './config.js?v=25dbfcb0';
+import { normalizeAccount, shouldAlert, soundKind } from './rules.js?v=25dbfcb0';
+import * as api from './api.js?v=25dbfcb0';
+import * as tokens from './tokens.js?v=25dbfcb0';
+import { analyzeTx } from './parser.js?v=25dbfcb0';
+import { describe, tokenLinks } from './describe.js?v=25dbfcb0';
+import { computePositions, periodSummary, positionCards, positionsOverview, sortPositionCards } from './positions.js?v=25dbfcb0';
+import * as alerts from './alerts.js?v=25dbfcb0';
 import {
   fmtNum, fmtUsd, fmtUsdCompact, fmtPct, fmtDateShort, relTime, fmtTime, fmtDateTime, dayLabel, toNumber, shortAccount,
   storageGet, storageSet, toDecimalString,
-} from './util.js?v=b0fe6885';
-import { t, tp, setLang, getLocale, applyStatic } from './i18n.js?v=b0fe6885';
-import * as session from './session.js?v=b0fe6885';
-import { FollowFeed } from './following.js?v=b0fe6885';
+} from './util.js?v=25dbfcb0';
+import { t, tp, setLang, getLang, getLocale, applyStatic } from './i18n.js?v=25dbfcb0';
+import * as session from './session.js?v=25dbfcb0';
+import { FollowFeed } from './following.js?v=25dbfcb0';
+import { Leaderboard, WINDOWS as LB_WINDOWS } from './leaderboard.js?v=25dbfcb0';
 
 const $ = (sel) => document.querySelector(sel);
 const SETTINGS_KEY = 'nwm.settings.v1';
@@ -92,6 +93,7 @@ const ICONS = {
   bellOn: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/></svg>',
   bellOff: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 9.3-5"/><path d="M18 8c0 7 3 9 3 9H9"/><path d="M6 8c0 7-3 9-3 9h3"/><path d="M10.3 21a1.9 1.9 0 0 0 3.4 0"/><path d="m2 2 20 20"/></svg>',
   gear: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>',
+  refresh: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 11a8 8 0 0 0-14.6-4.5L4 8"/><path d="M4 3v5h5"/><path d="M4 13a8 8 0 0 0 14.6 4.5L20 16"/><path d="M20 21v-5h-5"/></svg>',
   copy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg>',
 };
 
@@ -142,6 +144,20 @@ const feed = new FollowFeed({
   onUpdate: () => renderFollowPanel(),
   onNewEvent: (ev) => onFollowEvent(ev),
 });
+
+// Top meme traders (left column): loaded with the first wallet page, refreshed by the button.
+const board = new Leaderboard({
+  nearlyTraders: (w) => api.nearlyTraders(w),
+  nearlyTrader: (acc) => api.nearlyTrader(acc),
+  refTopPools: () => api.refTopPools(),
+  intearTokenList: () => api.intearTokenList(),
+  swapsByToken: (tok) => api.intearSwapsByToken(tok),
+  swapsByTrader: (acc) => api.intearSwapsByTrader(acc),
+  storageGet,
+  storageSet,
+}, { onUpdate: () => renderLeaderboard() });
+let boardStarted = false;
+let boardSig = '';
 
 // ---------------- DOM helpers ----------------
 
@@ -300,6 +316,7 @@ function applyLanguage() {
   alerts.setBaseTitle(state.account ? `${state.account} · ${BRAND}` : BRAND);
   renderAuth();
   renderFollowPanel();
+  renderLeaderboard(true);
   if (state.account) {
     renderAccountActions();
     $('#accountLinks').querySelector('.link-btn').textContent = t('copyAddress');
@@ -361,6 +378,7 @@ async function switchAccount(acc, { push = true } = {}) {
   $('#accountId').textContent = acc;
   renderAccountActions();
   loadAccountIdent(acc);
+  startLeaderboard();
   const links = $('#accountLinks');
   links.replaceChildren(
     el('a', { href: explorer.account(acc), target: '_blank', rel: 'noopener noreferrer' }, 'NearBlocks'),
@@ -794,7 +812,7 @@ function onTick() {
 
 function startTicker() {
   try {
-    const w = new Worker(new URL('./ticker.js?v=b0fe6885', import.meta.url));
+    const w = new Worker(new URL('./ticker.js?v=25dbfcb0', import.meta.url));
     w.onmessage = onTick;
     w.postMessage({ cmd: 'start', ms: 500 });
   } catch {
@@ -1541,6 +1559,137 @@ function renderPnlBoard() {
   box.replaceChildren(frag);
 }
 
+// ---------------- leaderboard (top meme traders) ----------------
+
+function startLeaderboard() {
+  if (!boardStarted) {
+    boardStarted = true;
+    board.load();
+  }
+  renderLeaderboard();
+}
+
+// Narrow column: "+$39.2K" in every language (the Russian compact form "тыс." is too wide).
+function usdShort(v) {
+  const a = Math.abs(v);
+  const [n, suffix] = a >= 1e6 ? [a / 1e6, 'M'] : a >= 1e3 ? [a / 1e3, 'K'] : [a, ''];
+  return `$${n.toLocaleString(getLocale(), { maximumFractionDigits: suffix && n < 100 ? 1 : 0 })}${suffix}`;
+}
+
+const signedUsd = (v, compact = false) => `${v > 0 ? '+' : v < 0 ? '−' : ''}${compact ? usdShort(v) : fmtUsd(Math.abs(v))}`;
+
+function lbRowEl(r, i) {
+  const roi = r.roi !== null ? fmtPct(r.roi * 100) : '—';
+  const meta = [roi, `${r.trades} ${tp('tradeWord', r.trades)}`, r.platforms.join(', ')].filter(Boolean).join(' · ');
+  const tip = [
+    r.account,
+    t('lb.tipPnl', { pnl: signedUsd(r.pnl), roi }),
+    t('lb.tipSplit', { r: signedUsd(r.realized), u: signedUsd(r.unrealized) }),
+    r.best && r.best.symbol ? t('lb.tipBest', `${r.best.symbol} ${signedUsd(r.best.pnl)}`) : null,
+    t('lb.tipOpen'),
+  ].filter(Boolean).join('\n');
+  const avatar = el('span', { class: 'avatar', 'aria-hidden': 'true' });
+  avatarInto(avatar, r.account, null);
+  const current = r.account === state.account;
+  return el('li', {},
+    el('button', {
+      type: 'button', class: `lb-row${current ? ' is-current' : ''}`, title: tip, 'aria-current': current ? 'true' : null,
+      onclick: () => {
+        if (r.account !== state.account) switchAccount(r.account);
+        if (window.matchMedia('(max-width: 1179px)').matches) window.scrollTo({ top: 0, behavior: 'smooth' });
+      },
+    },
+    el('span', { class: `lb-rank${i < 3 ? ' top' : ''}` }, String(i + 1)),
+    avatar,
+    el('span', { class: 'lb-main' },
+      el('span', { class: 'lb-acc' }, shortAccount(r.account)),
+      el('span', { class: 'lb-meta' }, meta)),
+    el('span', { class: `lb-pnl ${r.pnl > 0 ? 'up' : r.pnl < 0 ? 'down' : ''}` }, signedUsd(r.pnl, true))));
+}
+
+function renderLeaderboard(force = false) {
+  const list = $('#lbList');
+  if (!list) return;
+  const s = state.settings;
+  const w = LB_WINDOWS[s.lbWindow] ? s.lbWindow : DEFAULT_SETTINGS.lbWindow;
+  const by = s.lbSort === 'roi' ? 'roi' : 'pnl';
+  document.querySelectorAll('#lbPeriod button').forEach((b) => {
+    b.classList.toggle('on', b.dataset.lbw === w);
+    b.setAttribute('aria-checked', String(b.dataset.lbw === w));
+  });
+  document.querySelectorAll('#lbSort button').forEach((b) => {
+    b.classList.toggle('on', b.dataset.lbs === by);
+    b.setAttribute('aria-checked', String(b.dataset.lbs === by));
+  });
+
+  const loading = board.status === 'loading';
+  const rb = $('#lbRefresh');
+  rb.classList.toggle('spinning', loading);
+  rb.disabled = loading;
+  rb.setAttribute('aria-busy', String(loading));
+  $('#lbProgress').hidden = !loading;
+  $('#lbProgress').firstElementChild.style.width = `${Math.round(board.progress * 100)}%`;
+
+  const data = board.data;
+  const rows = board.rows(w, by);
+  const status = $('#lbStatus');
+  if (loading) {
+    status.replaceChildren(t(data ? 'lb.updating' : 'lb.loading', Math.round(board.progress * 100)));
+  } else if (board.status === 'error') {
+    status.replaceChildren(t('lb.failed'), ' ', el('button', { type: 'button', class: 'link-btn', onclick: () => board.refresh() }, t('lb.retry')));
+  } else if (data) {
+    const total = board.total(w);
+    status.replaceChildren(
+      board.error ? `${t('lb.failedStale')} ` : '',
+      `${t('lb.updated')} `,
+      el('span', { class: 'rel', 'data-ts': data.at }, relTime(data.at)),
+      rows.length && total ? ` · ${t('lb.count', { shown: rows.length, total: total.toLocaleString(getLocale()) })}` : '');
+  } else {
+    status.replaceChildren();
+  }
+  $('#lbPartial').hidden = !(data && data.partial && !loading);
+
+  const sig = [data?.at, data?.partial, w, by, state.account, getLang()].join('|');
+  if (!force && sig === boardSig) return;
+  boardSig = sig;
+  if (!data) {
+    list.replaceChildren();
+    return;
+  }
+  if (!rows.length) {
+    list.replaceChildren(el('li', { class: 'lb-empty' }, t('lb.empty')));
+    return;
+  }
+  list.replaceChildren(...rows.map(lbRowEl));
+}
+
+function bindLeaderboard() {
+  $('#lbRefresh').innerHTML = ICONS.refresh;
+  $('#lbRefresh').addEventListener('click', () => board.refresh());
+  $('#lbPeriod').addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-lbw]');
+    if (!b) return;
+    state.settings.lbWindow = b.dataset.lbw;
+    saveSettings();
+    renderLeaderboard();
+  });
+  $('#lbSort').addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-lbs]');
+    if (!b) return;
+    state.settings.lbSort = b.dataset.lbs;
+    saveSettings();
+    renderLeaderboard();
+  });
+  // A full column on wide screens; a collapsed block above the wallet on narrower ones.
+  const wrap = $('#lbWrap');
+  const mq = window.matchMedia('(max-width: 1179px)');
+  const apply = () => {
+    wrap.open = !mq.matches;
+  };
+  apply();
+  mq.addEventListener?.('change', apply);
+}
+
 function ctxFollow() {
   return { ...describeCtx(), positionOpen: () => null, cycleStats: () => null };
 }
@@ -1705,6 +1854,7 @@ function init() {
   setupSidePanel();
   bindUI();
   bindSocial();
+  bindLeaderboard();
   session.onChange(syncSession);
   syncSession();
   startTicker();

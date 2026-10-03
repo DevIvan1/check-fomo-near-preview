@@ -2,11 +2,26 @@
 
 **English** · [Русский](README.ru.md)
 
-Follow NEAR traders live, FomoApp-style. Check fomo shows every buy, sell and transfer of any NEAR wallet as a post with its transaction hash. It adds PnL boards for 24h, 7d and 30d, lets you connect your wallet and follow traders, and shows a live feed of the wallets you follow with loud sound alerts.
+Follow NEAR traders live, FomoApp-style. Check fomo shows every buy, sell and transfer of any NEAR wallet as a post with its transaction hash. It adds PnL boards for 24h, 7d and 30d, a leaderboard of the top 100 meme-coin traders on NEAR, lets you connect your wallet and follow traders, and shows a live feed of the wallets you follow with loud sound alerts.
 
 The home page is just a search box. A wallet opens when you enter its address, and you can bookmark a wallet with `?account=name.near` in the URL.
 
 Created by [@Checker1crypto](https://x.com/Checker1crypto).
+
+## Top traders leaderboard
+
+The left column of every wallet page ranks the 100 most profitable meme-coin traders on NEAR, FomoApp-style.
+
+- **Periods:** 24h, 7d or 30d. A period holds the positions opened in it, each with its full result: realized plus unrealized at the current price, in USD. This is the same rule Nearly uses for its own ranking.
+- **Rank by PnL** (profit in USD) or **ROI** (profit relative to the amount invested; positions of $25 or more in total).
+- **Every row** shows the rank, wallet, PnL, ROI, number of trades and the platforms the profit came from. Hover a row for realized and unrealized PnL and the best token. Click a row to open that wallet.
+- **Refresh** reloads everything (about 10–15 seconds, with a progress bar); the old board stays on screen meanwhile. The board is cached in the browser and refreshes itself on load when it is older than 10 minutes.
+- **Only profitable wallets** are listed. Protocol accounts (NEAR Intents solvers, routers, launchpad and token contracts) are excluded.
+
+Where the numbers come from, without counting anything twice:
+
+- **Nearly tokens** (`*.nearlytrade.near`): Nearly's own ranking (`/api/traders`, top 100 per period). Wallets outside it that made money on other launchpads get their Nearly result from `/api/trader/{account}` with the same period rule, so a loss on Nearly is not left out.
+- **Every other meme** (Hoot, Shore, Meme Cooking, tkn.near, Token0, NearPad, Neara, NearBased, Intear launchpad, AIdols and others, plus classic memes on Rhea such as SHITZU, NEKO, LONK, GEAR): calculated in the browser from on-chain swaps indexed by [Intear](https://docs.intear.tech/docs/events-api/historical). The 20 most traded of these tokens are taken from Rhea's pool list (24h volume), their latest swaps reveal who trades them, and the latest swaps of the 60 most active of those wallets are read as well. Positions are tracked like in the Positions tab (average cost, a re-buy after a full exit is a new position). A sell without a known buy before it is ignored, because its cost is unknown. Swaps paid in RHEA, ZEC, USDC and other tokens are converted to NEAR at the current price.
 
 ## Social: wallet, profile, follows
 
@@ -25,7 +40,7 @@ Created by [@Checker1crypto](https://x.com/Checker1crypto).
   - realized and unrealized PnL in NEAR and USD, total PnL with % on invested;
   - tokens held, holder payouts, hold time, number of buys and sells.
 
-  Sort by date opened or by size (invested amount); click the active option again to reverse. Cards refresh live with the pool price. The right column now holds only the following feed.
+  Sort by date opened or by size (invested amount); click the active option again to reverse. Cards refresh live with the pool price. The right column holds only the following feed.
 - **Louder, longer alerts.** Three-note sounds through a compressor: rising for buys, falling for sells.
 
 ## Features
@@ -59,6 +74,7 @@ Everything runs in the browser, no server needed.
 | Token balances | FastNEAR API (`/v1/account/{id}/full`) |
 | Nearly launch data (price, icon, launch id → token) | `nearly.trade/api` |
 | Prices | Rhea DCL pools (live), Intear Prices, Rhea price list |
+| Leaderboard | Nearly (`/api/traders`, `/api/trader/{account}`), Intear Events API (swaps by token and by trader), Intear token list (prices, decimals), Rhea pool list (24h volume) |
 
 Amounts come from NEP-141 events (`ft_transfer`, `ft_mint`, `ft_burn`), wNEAR text logs, Rhea DCL (`dcl.ref`) and Rhea v2 (`Swapped … for …`) swap events, and receipt deposits. Gas refunds are ignored.
 
@@ -71,7 +87,7 @@ python -m http.server 8000
 ```
 
 - **App:** http://localhost:8000/
-- **Tests:** http://localhost:8000/tests/ (63 tests: parser, both languages, PnL and summary, backup-source conversion, alert rules, XSS safety). `tests/` and `tools/` are not deployed to Vercel (see `.vercelignore`).
+- **Tests:** http://localhost:8000/tests/ (72 tests: parser, both languages, PnL and summary, positions, leaderboard maths and engine, backup-source conversion, alert rules, XSS safety). `tests/` and `tools/` are not deployed to Vercel (see `.vercelignore`).
 
 Before every commit, stamp the module versions:
 
@@ -83,5 +99,6 @@ python tools/stamp.py
 
 - **Long histories.** For accounts with more than 1000 transactions only the latest 200 load at first; use "Load earlier" for the rest. PnL and the summary cover the loaded history.
 - **USD values** use the current NEAR price.
+- **Leaderboard depth.** Intear's public API returns the latest 50 swaps per token or wallet, so on other launchpads the board sees recent activity best; very active wallets may have older positions cut off. Nearly numbers come from Nearly and are complete. Only the 20 busiest non-Nearly memes are scanned on each refresh.
 - **Backup mode** shows only the latest ~25 receipts' transactions until FastNEAR is back.
 - **FastNEAR browser key.** To lift FastNEAR's anonymous rate limit, create a free *browser* key restricted to your domain (https://docs.fastnear.com/auth) and put it into `FASTNEAR_API_KEY` in `js/config.js`.

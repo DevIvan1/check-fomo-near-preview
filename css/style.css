@@ -91,7 +91,7 @@ button { font: inherit; color: inherit; }
   border-bottom: 1px solid var(--line);
 }
 .topbar-inner {
-  max-width: 1080px; margin: 0 auto; padding: 10px 16px;
+  max-width: 1440px; margin: 0 auto; padding: 10px 16px;
   display: flex; align-items: center; gap: 12px;
 }
 .brand {
@@ -154,14 +154,15 @@ body.is-landing .footer { display: none; }
 .link-btn { background: none; border: 0; padding: 0; text-decoration: underline; cursor: pointer; }
 
 .audio-hint {
-  max-width: 1080px; margin: 10px auto 0; padding: 8px 16px; font-size: 13px; color: var(--muted);
+  max-width: 1440px; margin: 10px auto 0; padding: 8px 16px; font-size: 13px; color: var(--muted);
 }
 
 /* ---------- layout ---------- */
+/* Wide: top traders | wallet + feed | following. Narrower: the leaderboard folds above the wallet. */
 .layout {
-  max-width: 1080px; margin: 0 auto; padding: 16px;
-  display: grid; grid-template-columns: minmax(0, 1fr) 320px; gap: 0 20px; align-items: start;
-  grid-template-areas: "account side" "feed side";
+  max-width: 1440px; margin: 0 auto; padding: 16px;
+  display: grid; grid-template-columns: 290px minmax(0, 1fr) 320px; gap: 0 20px; align-items: start;
+  grid-template-areas: "lb account side" "lb feed side";
   grid-template-rows: auto 1fr;
 }
 .account-card { grid-area: account; }
@@ -170,8 +171,12 @@ body.is-landing .footer { display: none; }
 .side-inner { display: grid; gap: 14px; }
 .side-summary { display: none; }
 
+@media (max-width: 1179px) {
+  .layout { grid-template-columns: minmax(0, 1fr) 320px; grid-template-areas: "lb side" "account side" "feed side"; grid-template-rows: auto auto 1fr; }
+}
+
 @media (max-width: 900px) {
-  .layout { grid-template-columns: minmax(0, 1fr); grid-template-areas: "account" "side" "feed"; grid-template-rows: auto; gap: 12px; }
+  .layout { grid-template-columns: minmax(0, 1fr); grid-template-areas: "account" "lb" "side" "feed"; grid-template-rows: auto; gap: 12px; }
   .side-col { position: static; max-height: none; overflow: visible; }
   .side-summary {
     display: block; cursor: pointer; list-style: none; padding: 10px 14px; border: 1px solid var(--line);
@@ -374,7 +379,7 @@ body.view-positions .feed-footer { display: none !important; }
 }
 
 .footer {
-  max-width: 1080px; margin: 0 auto; padding: 8px 16px 28px;
+  max-width: 1440px; margin: 0 auto; padding: 8px 16px 28px;
   display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 16px;
 }
 .credit { color: var(--muted); display: flex; align-items: center; gap: 6px; white-space: nowrap; }
@@ -525,3 +530,61 @@ body.is-landing .top-actions { margin-left: 0; }
 
 .po-sort { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
 .po-sort .seg button { font-variant-numeric: tabular-nums; }
+
+/* ---------- leaderboard: top meme traders ---------- */
+.lb-col { grid-area: lb; min-width: 0; position: sticky; top: 70px; }
+.lb-summary { display: none; }
+.lb-panel { padding: 14px 0 10px; display: flex; flex-direction: column; max-height: calc(100vh - 86px); min-height: 0; }
+.lb-top {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "title refresh" "controls controls";
+  align-items: center; gap: 8px; padding: 0 12px 0 16px;
+}
+.lb-title { grid-area: title; margin: 0; }
+.lb-refresh { grid-area: refresh; width: 30px; height: 30px; }
+.lb-refresh svg { width: 16px; height: 16px; }
+.lb-refresh:disabled { cursor: default; }
+.lb-refresh.spinning svg { animation: lb-spin 0.9s linear infinite; }
+@keyframes lb-spin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .lb-refresh.spinning svg { animation: none; } }
+.lb-controls { grid-area: controls; display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.lb-controls .seg button { font-variant-numeric: tabular-nums; }
+.lb-progress { height: 2px; margin: 10px 16px 0; background: var(--line); border-radius: 2px; overflow: hidden; }
+.lb-progress span { display: block; height: 100%; width: 0; background: var(--muted); transition: width 0.3s ease; }
+.lb-status { padding: 8px 16px 6px; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.lb-status:empty { display: none; }
+.lb-list { list-style: none; margin: 0; padding: 0; overflow: auto; flex: 1 1 auto; min-height: 0; scrollbar-width: thin; border-top: 1px solid var(--line); }
+.lb-row {
+  all: unset; box-sizing: border-box; width: 100%; cursor: pointer;
+  display: grid; grid-template-columns: 22px 28px minmax(0, 1fr) auto; gap: 8px; align-items: center;
+  padding: 7px 14px 7px 12px; border-bottom: 1px solid var(--line);
+}
+.lb-row:hover { background: var(--hover); }
+.lb-row:focus-visible { outline: 2px solid color-mix(in srgb, var(--text) 30%, transparent); outline-offset: -2px; }
+.lb-row.is-current { background: var(--new); }
+.lb-row .avatar { width: 28px; height: 28px; }
+.lb-rank { font-size: 12px; color: var(--faint); text-align: right; font-variant-numeric: tabular-nums; }
+.lb-rank.top { color: var(--text); font-weight: 600; }
+.lb-main { display: grid; min-width: 0; }
+.lb-acc { font: 600 12.5px var(--mono); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lb-meta { font-size: 11.5px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; }
+.lb-pnl { font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.lb-empty { padding: 14px 16px; font-size: 13px; color: var(--muted); }
+.lb-partial, .lb-note { margin: 8px 16px 0; font-size: 11.5px; color: var(--muted); line-height: 1.45; }
+.lb-partial { color: var(--warn); }
+
+@media (max-width: 1179px) {
+  .lb-col { position: static; margin-bottom: 12px; }
+  .lb-summary {
+    display: block; cursor: pointer; list-style: none; padding: 10px 14px; border: 1px solid var(--line);
+    border-radius: var(--radius); background: var(--surface); font-weight: 500; font-size: 13px;
+  }
+  .lb-summary::-webkit-details-marker { display: none; }
+  .lb-summary::after { content: '▾'; float: right; color: var(--muted); }
+  .lb-wrap[open] .lb-summary { margin-bottom: 12px; }
+  .lb-wrap[open] .lb-summary::after { content: '▴'; }
+  .lb-panel { max-height: 560px; }
+  /* the folded block's own header already says "Top traders" */
+  .lb-top { grid-template-areas: "controls refresh"; }
+  .lb-title { display: none; }
+}
+@media (max-width: 900px) { .lb-col { margin-bottom: 0; } }

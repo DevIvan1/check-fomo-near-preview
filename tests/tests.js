@@ -1,15 +1,16 @@
 // Browser test suite. Open tests/index.html through any static server.
 
-import { analyzeTx, parseLog, statusKind, failureMessage, fromRpcTxStatus } from '../js/parser.js?v=b0fe6885';
-import { describe, humanError } from '../js/describe.js?v=b0fe6885';
-import { computePositions, positionRows, accountStats, periodSummary, positionCards, positionsOverview, sortPositionCards } from '../js/positions.js?v=b0fe6885';
-import { normalizeAccount, shouldAlert, nearSize, soundKind } from '../js/rules.js?v=b0fe6885';
-import { toDecimalString, toNumber, fmtNum, big, shortHash, shortAccount, fmtPct, relTime } from '../js/util.js?v=b0fe6885';
-import { safeIcon, dclPrice, routePrice } from '../js/tokens.js?v=b0fe6885';
-import { NEAR_ID } from '../js/config.js?v=b0fe6885';
-import * as session from '../js/session.js?v=b0fe6885';
-import { FollowFeed, isFeedEvent } from '../js/following.js?v=b0fe6885';
-import { setLang, t, tp, dictKeys } from '../js/i18n.js?v=b0fe6885';
+import { analyzeTx, parseLog, statusKind, failureMessage, fromRpcTxStatus } from '../js/parser.js?v=25dbfcb0';
+import { describe, humanError } from '../js/describe.js?v=25dbfcb0';
+import { computePositions, positionRows, accountStats, periodSummary, positionCards, positionsOverview, sortPositionCards } from '../js/positions.js?v=25dbfcb0';
+import { normalizeAccount, shouldAlert, nearSize, soundKind } from '../js/rules.js?v=25dbfcb0';
+import { toDecimalString, toNumber, fmtNum, big, shortHash, shortAccount, fmtPct, relTime } from '../js/util.js?v=25dbfcb0';
+import { safeIcon, dclPrice, routePrice } from '../js/tokens.js?v=25dbfcb0';
+import { NEAR_ID } from '../js/config.js?v=25dbfcb0';
+import * as session from '../js/session.js?v=25dbfcb0';
+import { FollowFeed, isFeedEvent } from '../js/following.js?v=25dbfcb0';
+import { setLang, t, tp, dictKeys } from '../js/i18n.js?v=25dbfcb0';
+import * as lb from '../js/leaderboard.js?v=25dbfcb0';
 
 const ACC = 'hotfrog2879.near';
 const results = [];
@@ -844,6 +845,245 @@ async function main() {
     feed.setFollows('me.near', []);
     eq(feed.list().length, 0, 'отписка убирает сделки');
     eq(feed.size, 0);
+  });
+
+  // ---------- leaderboard: top meme traders ----------
+  const DAY = 86400000;
+  const NOW = Date.UTC(2026, 9, 3, 12, 0, 0);
+  const ns = (ms) => (BigInt(ms) * 1000000n).toString();
+  const e24 = (n) => (BigInt(Math.round(n * 1e6)) * 10n ** 18n).toString(); // NEAR -> yocto
+  const e18 = (n) => (BigInt(Math.round(n * 1e6)) * 10n ** 12n).toString(); // 18-decimal token
+  const PRICES = {
+    'wrap.near': { price: '5', symbol: 'wNEAR', decimal: 24 },
+    'token.rhealab.near': { price: '0.5', symbol: 'RHEA', decimal: 18 },
+    'hoot-8ecf65.launchpad.justhoot.near': { price: '0.002', symbol: 'HOOT', decimal: 18 },
+    'token.0xshitzu.near': { price: '0.01', symbol: 'SHITZU', decimal: 18 },
+    'batman-4.nearlytrade.near': { price: '0.001', symbol: 'BATMAN', decimal: 18 },
+  };
+  const book = lb.priceBook(PRICES);
+  // swap: trader buys (+qty) or sells (-qty) `token` for `near` wNEAR (or another quote)
+  const swap = (trader, token, qty, near, ms, { quote = 'wrap.near', id } = {}) => ({
+    trader, receipt_id: id || `${trader}-${token}-${ms}-${qty}`, block_height: Math.floor(ms / 1000),
+    block_timestamp_nanosec: ns(ms),
+    balance_changes: { [token]: qty < 0 ? '-' + e18(-qty) : e18(qty), [quote]: near > 0 ? '-' + (quote === 'wrap.near' ? e24(near) : e18(near)) : (quote === 'wrap.near' ? e24(-near) : e18(-near)) },
+  });
+
+  test('рейтинг: какие токены считаются мемами и откуда они', () => {
+    eq(lb.memePlatform('batman-4.nearlytrade.near'), 'Nearly');
+    eq(lb.memePlatform('hoot-8ecf65.launchpad.justhoot.near'), 'Hoot');
+    eq(lb.memePlatform('ribbit-426.meme-cooking.near'), 'Meme Cooking');
+    eq(lb.memePlatform('shore-4lzt.launch.shoremarkets.near'), 'Shore');
+    eq(lb.memePlatform('blackdragon.tkn.near'), 'tkn.near');
+    eq(lb.memePlatform('kat.token0.near'), 'Token0');
+    eq(lb.memePlatform('token.0xshitzu.near'), 'Rhea');
+    eq(lb.memePlatform('wrap.near'), null);
+    eq(lb.memePlatform('usdt.tether-token.near'), null);
+    eq(lb.memePlatform('zec.omft.near'), null);
+    eq(lb.memePlatform('token.rhealab.near'), null);
+    eq(lb.memePlatform('intel.tkn.near'), null, 'утилитарный токен Intear не мем');
+    eq(lb.isNearlyToken('nearly-993927.nearlytrade.near'), true);
+  });
+  test('рейтинг: протокольные аккаунты не трейдеры', () => {
+    eq(lb.isTraderAccount('alice.near'), true);
+    eq(lb.isTraderAccount('lock.near'), true, 'обычный аккаунт lock.near остаётся');
+    eq(lb.isTraderAccount('a9c8669de0ba79fbd634549bcfc9a250c94b49d8f0e021f491cb23b247eac61d'), true);
+    eq(lb.isTraderAccount('frigid_polar1.user.intear.near'), true);
+    eq(lb.isTraderAccount('intents.near'), false);
+    eq(lb.isTraderAccount('lock.nearpadfamily.near'), false);
+    eq(lb.isTraderAccount('router.aurabot.near'), false);
+    eq(lb.isTraderAccount('v2.ref-finance.near'), false);
+    eq(lb.isTraderAccount('batman-4.nearlytrade.near'), false, 'контракт токена');
+    eq(lb.isTraderAccount('meme-cooking.near'), false, 'контракт лаунчпада');
+    eq(lb.isTraderAccount(''), false);
+  });
+  test('рейтинг: разбор свопа (покупка, продажа, котировка не в NEAR, мусор)', () => {
+    const buy = lb.parseSwap(swap('alice.near', 'hoot-8ecf65.launchpad.justhoot.near', 1000, 10, NOW), book);
+    eq(buy.side, 'buy');
+    approx(buy.qty, 1000, 1e-9);
+    approx(buy.near, 10, 1e-9);
+    eq(buy.ts, NOW);
+    const sell = lb.parseSwap(swap('alice.near', 'hoot-8ecf65.launchpad.justhoot.near', -500, -7, NOW), book);
+    eq(sell.side, 'sell');
+    approx(sell.near, 7, 1e-9);
+    const viaRhea = lb.parseSwap(swap('alice.near', 'token.0xshitzu.near', 100, 20, NOW, { quote: 'token.rhealab.near' }), book);
+    approx(viaRhea.near, 2, 1e-9, '20 RHEA × $0.5 / $5 = 2 NEAR');
+    const memeForMeme = { trader: 'a.near', block_timestamp_nanosec: ns(NOW), balance_changes: { 'token.0xshitzu.near': '-1000', 'hoot-8ecf65.launchpad.justhoot.near': '5000' } };
+    eq(lb.parseSwap(memeForMeme, book), null, 'мем за мем не считаем');
+    const noMeme = { trader: 'a.near', block_timestamp_nanosec: ns(NOW), balance_changes: { 'wrap.near': '-1', 'token.rhealab.near': '5' } };
+    eq(lb.parseSwap(noMeme, book), null);
+    const unknownDec = { trader: 'a.near', block_timestamp_nanosec: ns(NOW), balance_changes: { 'x-1.meme-cooking.near': '5', 'wrap.near': '-' + e24(1) } };
+    eq(lb.parseSwap(unknownDec, book), null, 'без decimals не считаем');
+    const sameSign = { trader: 'a.near', block_timestamp_nanosec: ns(NOW), balance_changes: { 'token.0xshitzu.near': e18(5), 'wrap.near': e24(1) } };
+    eq(lb.parseSwap(sameSign, book), null, 'получил и мем, и NEAR — это не сделка');
+    eq(lb.parseSwap(null, book), null);
+  });
+  test('рейтинг: позиции-циклы, неизвестная себестоимость, окно по дате открытия', () => {
+    const tok = 'hoot-8ecf65.launchpad.justhoot.near';
+    const trades = [
+      swap('a.near', tok, 1000, 10, NOW - 10 * DAY), // old position: bought 10 NEAR
+      swap('a.near', tok, -1000, -30, NOW - 9 * DAY), // closed with +20 NEAR
+      swap('a.near', tok, 2000, 20, NOW - 2 * DAY), // new position (entry #2)
+      swap('a.near', tok, -1000, -15, NOW - DAY / 2), // half sold: +5 NEAR realized
+      swap('a.near', 'token.0xshitzu.near', -50, -3, NOW - DAY / 4), // sell with unknown cost: ignored
+    ].map((x) => lb.parseSwap(x, book));
+    const cycles = lb.buildCycles(trades);
+    eq(cycles.length, 2, 'повторная покупка — новая позиция, продажа без покупки не создаёт позицию');
+    eq(cycles[0].closed, true);
+    approx(cycles[0].realized, 20, 1e-9);
+    eq(cycles[1].closed, false);
+    approx(cycles[1].realized, 5, 1e-9);
+    approx(cycles[1].qty, 1000, 1e-9);
+    approx(cycles[1].cost, 10, 1e-9);
+    // 7 days: only the second position (opened 2 days ago); 1000 HOOT left at 0.002$/5$ = 0.4 NEAR
+    const w7 = lb.cyclesWindow(cycles, NOW - 7 * DAY, book);
+    approx(w7.realized, 5 * 5, 1e-6, 'реализовано $25');
+    approx(w7.unrealized, (1000 * 0.0004 - 10) * 5, 1e-6, 'нереализовано −$48');
+    approx(w7.pnl, w7.realized + w7.unrealized, 1e-9);
+    approx(w7.basis, 20 * 5, 1e-6, 'вложено $100');
+    eq(w7.trades, 2);
+    eq(w7.open, 1);
+    eq([...w7.platforms].join(), 'Hoot');
+    eq(w7.best.symbol, 'HOOT');
+    // 30 days: both positions; 24h: nothing was opened
+    approx(lb.cyclesWindow(cycles, NOW - 30 * DAY, book).realized, 25 * 5, 1e-6);
+    eq(lb.cyclesWindow(cycles, NOW - DAY, book).trades, 0, 'позиция открыта 2 дня назад — не попадает в 24ч');
+  });
+  test('рейтинг: статистика Nearly по кошельку — то же правило периода', () => {
+    const detail = { tokens: [
+      { token: 'a.nearlytrade.near', symbol: 'A', first_ts: NOW - 2 * DAY, pnl_usd: 300, realized_usd: 100, unrealized_usd: 200, basis_usd: 150, buys: 2, sells: 1, open: true },
+      { token: 'b.nearlytrade.near', symbol: 'B', first_ts: NOW - 20 * DAY, pnl_usd: -500, realized_usd: -500, unrealized_usd: 0, basis_usd: 600, buys: 1, sells: 1, open: false },
+    ] };
+    const w7 = lb.nearlyDetailWindow(detail, NOW - 7 * DAY);
+    eq(w7.pnl, 300);
+    eq(w7.trades, 3);
+    eq(w7.best.symbol, 'A');
+    eq(lb.nearlyDetailWindow(detail, NOW - 30 * DAY).pnl, -200, 'убыток на Nearly тоже учитывается');
+    eq(lb.nearlyDetailWindow({ tokens: [] }, 0).trades, 0);
+    eq(lb.nearlyDetailWindow(null, 0).pnl, 0);
+  });
+  test('рейтинг: слияние Nearly + других площадок, только прибыльные, сортировка по ROI', () => {
+    const part = (pnl, basis, platform, trades = 3) => ({ pnl, realized: pnl, unrealized: 0, basis, trades, tokens: 1, open: 0, best: { symbol: platform.slice(0, 3).toUpperCase(), pnl }, platforms: new Set([platform]) });
+    const listRows = [
+      { account: 'whale.near', pnl_usd: 5000, realized_usd: 4000, unrealized_usd: 1000, basis_usd: 10000, trades: 20, tokens: 3, open: 1, best: { symbol: 'NEARLY', pnl_usd: 4000 } },
+      { account: 'small.near', pnl_usd: 900, realized_usd: 900, unrealized_usd: 0, basis_usd: 100, trades: 4, tokens: 1, open: 0, best: null },
+    ];
+    const others = new Map([
+      ['whale.near', part(-1000, 2000, 'Hoot')],
+      ['hooter.near', part(3000, 1000, 'Hoot')],
+      ['loser.near', part(-50, 100, 'Shore')],
+      ['intents.near', part(99999, 1, 'Hoot')],
+    ]);
+    const details = new Map([['hooter.near', { tokens: [{ token: 'x.nearlytrade.near', symbol: 'X', first_ts: NOW - DAY, pnl_usd: -2500, basis_usd: 3000, buys: 1, sells: 1 }] }]]);
+    const rows = lb.mergeWindow({ listRows, others, details }, NOW - 7 * DAY);
+    const by = Object.fromEntries(rows.map((r) => [r.account, r]));
+    eq(by['whale.near'].pnl, 4000, 'Nearly 5000 + Hoot −1000');
+    eq(by['whale.near'].platforms.join(), 'Nearly,Hoot');
+    eq(by['whale.near'].trades, 23);
+    approx(by['whale.near'].roi, 4000 / 12000, 1e-12);
+    eq(by['hooter.near'].pnl, 500, 'Hoot 3000 + убыток на Nearly −2500');
+    eq(by['intents.near'], undefined, 'протокольный аккаунт исключён');
+    const top = lb.rankRows(rows, 'pnl');
+    eq(top.map((r) => r.account).join(), 'whale.near,small.near,hooter.near');
+    eq(top.some((r) => r.account === 'loser.near'), false, 'в топе только прибыльные');
+    const roi = lb.rankRows(rows, 'roi');
+    eq(roi[0].account, 'small.near', 'ROI 900%');
+    eq(lb.rankRows(rows, 'pnl', 1).length, 1);
+  });
+  test('рейтинг: активные мемы из пулов Rhea (без Nearly и не-мемов)', () => {
+    const pools = [
+      { token_account_ids: ['wrap.near', 'zec.omft.near'], volume_24h: '1000000' },
+      { token_account_ids: ['batman-4.nearlytrade.near', 'wrap.near'], volume_24h: '300000' },
+      { token_account_ids: ['hoot-8ecf65.launchpad.justhoot.near', 'wrap.near'], volume_24h: '100000' },
+      { token_account_ids: ['token.0xshitzu.near', 'wrap.near'], volume_24h: '15000' },
+      { token_account_ids: ['token.0xshitzu.near', 'kat.token0.near'], volume_24h: '3000' },
+      { token_account_ids: ['tiny-1.meme-cooking.near', 'wrap.near'], volume_24h: '20' },
+    ];
+    eq(lb.activeMemeTokens(pools).join(), 'hoot-8ecf65.launchpad.justhoot.near,token.0xshitzu.near,kat.token0.near');
+    eq(lb.activeMemeTokens(pools, 1).join(), 'hoot-8ecf65.launchpad.justhoot.near');
+    eq(lb.activeMemeTokens(null).length, 0);
+  });
+  test('рейтинг: движок — загрузка, прогресс, кэш, обновление', async () => {
+    const store = new Map();
+    const calls = { nearly: 0, token: 0, trader: 0, detail: 0 };
+    const tok = 'hoot-8ecf65.launchpad.justhoot.near';
+    const deps = {
+      now: () => NOW,
+      storageGet: (k, fb) => (store.has(k) ? JSON.parse(store.get(k)) : fb),
+      storageSet: (k, v) => store.set(k, JSON.stringify(v)),
+      nearlyTraders: async (w) => {
+        calls.nearly += 1;
+        return { traders: 500, rows: [{ account: 'nearlyking.near', pnl_usd: w === '24h' ? 100 : 2000, realized_usd: 0, unrealized_usd: 0, basis_usd: 1000, trades: 5, tokens: 1, open: 1, best: { symbol: 'NEARLY', pnl_usd: 100 } }] };
+      },
+      refTopPools: async () => [{ token_account_ids: [tok, 'wrap.near'], volume_24h: '50000' }],
+      intearTokenList: async () => PRICES,
+      swapsByToken: async () => {
+        calls.token += 1;
+        return [swap('hooter.near', tok, 10000, 10, NOW - 3 * DAY), swap('intents.near', tok, 5, 1, NOW - DAY)];
+      },
+      swapsByTrader: async (acc) => {
+        calls.trader += 1;
+        // the Nearly buy must not be counted here: Nearly tokens come from Nearly's own stats
+        return acc === 'hooter.near' ? [swap('hooter.near', tok, -5000, -40, NOW - 2 * DAY), swap('hooter.near', 'batman-4.nearlytrade.near', 1000, 50, NOW - DAY)] : [];
+      },
+      nearlyTrader: async () => {
+        calls.detail += 1;
+        return { tokens: [] };
+      },
+    };
+    const progress = [];
+    const engine = new lb.Leaderboard(deps, { onUpdate: () => progress.push(engine.progress) });
+    eq(engine.isStale(), true);
+    await engine.load();
+    eq(engine.status, 'ready');
+    eq(engine.progress, 1);
+    ok(progress.some((p) => p > 0 && p < 1), 'есть промежуточный прогресс');
+    eq(calls.nearly, 3, 'три периода Nearly');
+    eq(calls.token, 1);
+    eq(calls.trader, 1, 'протокольный аккаунт не запрашиваем');
+    eq(calls.detail, 1, 'статистика Nearly для трейдера с другой площадки');
+    // hooter: bought 10000 HOOT for 10 NEAR 3 days ago, sold half for 40 NEAR: +35 NEAR realized,
+    // 5000 HOOT left = 2 NEAR at 0.0004 NEAR, cost 5 -> −3 NEAR; total 32 NEAR = $160
+    const week = engine.rows('7d');
+    eq(week.map((r) => r.account).join(), 'nearlyking.near,hooter.near');
+    approx(week[1].pnl, 160, 1e-6);
+    eq(week[1].platforms.join(), 'Hoot', 'сделка с токеном Nearly не посчитана дважды');
+    eq(week[1].trades, 2);
+    eq(engine.rows('24h').map((r) => r.account).join(), 'nearlyking.near', 'позиция открыта 3 дня назад — не 24ч');
+    eq(engine.total('7d'), 501, '500 трейдеров Nearly + 1 с другой площадки');
+    eq(engine.data.partial, false);
+    // cached: a new engine shows it at once and does not refetch while fresh
+    const again = new lb.Leaderboard(deps);
+    eq(again.status, 'ready');
+    eq(again.rows('7d').length, 2);
+    eq(again.isStale(), false);
+    await again.load();
+    eq(calls.nearly, 3, 'свежий кэш — без запросов');
+    await again.refresh();
+    eq(calls.nearly, 6, 'кнопка «Обновить» запрашивает заново');
+    const p1 = again.refresh();
+    eq(again.refresh(), p1, 'повторное нажатие во время загрузки не запускает вторую');
+    await p1;
+  });
+  test('рейтинг: источники падают — частичные данные или понятная ошибка', async () => {
+    const base = {
+      now: () => NOW,
+      nearlyTraders: async () => ({ traders: 1, rows: [{ account: 'n.near', pnl_usd: 10, basis_usd: 5, trades: 1 }] }),
+      nearlyTrader: async () => ({ tokens: [] }),
+      refTopPools: async () => [],
+      intearTokenList: async () => { throw new Error('down'); },
+      swapsByToken: async () => [],
+      swapsByTrader: async () => [],
+    };
+    const a = new lb.Leaderboard(base);
+    await a.refresh();
+    eq(a.status, 'ready');
+    eq(a.data.partial, true, 'без цен Intear — только Nearly, помечено как неполное');
+    eq(a.rows('7d').length, 1);
+    const b = new lb.Leaderboard({ ...base, nearlyTraders: async () => { throw new Error('down'); } });
+    await b.refresh();
+    eq(b.status, 'error');
+    ok(b.error);
+    eq(b.rows('7d').length, 0);
   });
 
   await Promise.all(pendingTests);
