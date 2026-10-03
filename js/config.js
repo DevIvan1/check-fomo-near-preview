@@ -4,11 +4,17 @@ import { t } from './i18n.js';
 
 export const TX_API = 'https://tx.main.fastnear.com/v0';
 export const FASTNEAR_API = 'https://api.fastnear.com/v1';
+// The first RPC_FAST endpoints share frequent polling (round-robin); the rest are fallbacks.
+// Several providers, so one provider's rate limit does not stop the live feed.
 export const RPC_URLS = [
   'https://rpc.mainnet.fastnear.com',
+  'https://near.drpc.org',
+  'https://rpc.shitzuapes.xyz',
   'https://free.rpc.fastnear.com',
   'https://rpc.mainnet.near.org',
 ];
+export const RPC_FAST = 3;
+export const DCL_CONTRACT = 'dclv2.ref-labs.near';
 export const NEARLY_API = 'https://nearly.trade/api';
 export const INTEAR_PRICES = 'https://prices.intear.tech';
 export const REF_PRICES = 'https://api.ref.finance/list-token-price';

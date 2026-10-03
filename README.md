@@ -1,48 +1,57 @@
 # NEAR Wallet Monitor
 
-Живая лента действий NEAR-кошелька в виде постов: покупки, продажи, переводы, выплаты холдерам, регистрации в контрактах. У каждого поста есть хеш транзакции.
+A live, post-style feed of everything a NEAR wallet does: buys, sells, transfers, holder payouts and contract registrations. Every post links its transaction hash.
 
-Главная страница — только поле поиска: кошелёк открывается, когда вы вводите адрес. Ссылку на конкретный кошелёк можно сохранить: адрес сайта с `?account=имя.near`.
+The home page is just a search box. A wallet opens when you enter its address, and you can bookmark a wallet with `?account=name.near` in the URL.
 
-## Что умеет
+Created by [@Checker1crypto](https://x.com/Checker1crypto).
 
-- **Живая лента.** Каждые 3 секунды (настраивается) лёгкий RPC-запрос проверяет баланс кошелька: любая его транзакция сжигает газ, поэтому изменение видно сразу, и тогда приложение запрашивает новые транзакции. Ещё раз в 15 секунд идёт страховочная проверка, которая ловит и чисто токенные поступления. Обычно событие появляется через 4–8 секунд после блока. Если не все receipts транзакции успели исполниться, пост помечается «исполняется…» и обновляется сам.
-- **Подробности по сделкам.** Сумма в NEAR, полученное или отданное количество токенов, налог токена (у токенов Nearly 1–2%), цена за токен, FDV в момент сделки, маршрут (`NEAR → NEARLY → NEARLEE`), пулы и комиссия, площадка (Rhea DCL / Rhea / NEAR Intents) и лаунчпад (Nearly и др.). Для каждой сделки строка «Сейчас» показывает изменение цены с момента сделки.
-- **Результат продажи.** Для каждой продажи считается PnL по средней цене входа и отмечается, закрыта ли позиция.
-- **Неудачные сделки.** Причина показывается простыми словами: проскальзывание, нехватка средств, ордер не исполнен из-за stop point.
-- **Сигналы.** Отдельно выделяются `storage_deposit` в токене (часто это подготовка к покупке), новые ключи доступа и деплой контракта.
-- **Оповещения.** Звук генерируется в браузере через Web Audio, файлы не нужны: у покупки тон восходящий, у продажи нисходящий, у ошибки предупреждающий. Ещё есть счётчик `(N)` в заголовке вкладки, точка на иконке и, по желанию, уведомления на рабочий стол. Опрос идёт через Web Worker, поэтому оповещения продолжают приходить, когда вкладка в фоне. Через настройки можно включить оповещения обо всём, о важных событиях или только о сделках, а также задать минимальный размер сделки в NEAR.
-- **Позиции и PnL** по каждому токену: сколько вложено, выведено и получено выплатами холдерам, текущая стоимость остатка и итоговый результат.
-- **Кошелёк и статистика:** балансы NEAR и токенов со стоимостью, объём, число сделок за 24 часа, сумма пополнений и их основной источник.
-- **Фильтры** (сделки / переводы / выплаты / прочее), **поиск** по токену, хешу или аккаунту, **экспорт в CSV**. Частые мелкие выплаты холдерам подряд сворачиваются в одну карточку.
-- **Язык:** английский (по умолчанию) или русский. **Тема:** как в системе, светлая или тёмная. Оба переключателя в настройках, выбор запоминается.
+## Features
 
-## Источники данных
+- **Live feed.** Every 3 seconds (configurable) a lightweight RPC call checks the wallet balance. Any transaction the wallet signs burns gas, so a change shows up right away and triggers a fetch of the new transactions. A 15-second safety poll also catches token-only transfers. Events usually appear 4–8 seconds after the block. Posts whose receipts are still executing are marked "executing" and update themselves.
+- **Trade details.** NEAR spent or received, token amount, token tax (1–2% on Nearly tokens), price per token, FDV at the time of the trade, route (`NEAR → NEARLY → NEARLEE`), pools and fees, venue (Rhea DCL / Rhea / NEAR Intents) and launchpad (Nearly and others).
+- **Live PnL on buys.** While the wallet still holds the token, the buy post refreshes every 3 seconds from the Rhea DCL pool price. It shows the current PnL in %, the unrealized profit in NEAR in brackets, and the USD equivalent, for example `+10% (+50 NEAR) ≈ +$235`. The "Now" line shows the current price, current FDV and the change since the trade.
+- **Sell results.** Every sell shows its PnL against the average entry price and marks closed positions.
+- **Failed trades** are explained in plain words: slippage, insufficient funds, stop-point order not filled.
+- **Signals:** `storage_deposit` into a token (often a step before buying), new access keys and contract deploys are highlighted.
+- **Alerts.**
+  - Sounds are generated in the browser (Web Audio): rising for buys, falling for sells, a warning tone for errors.
+  - A `(N)` counter appears in the tab title and a dot on the favicon; desktop notifications are optional.
+  - Polling runs in a Web Worker, so alerts keep coming while the tab is in the background.
+  - You choose what to be alerted about (everything, important events, or trades only) and can set a minimum trade size in NEAR.
+- **Positions & PnL** per token: invested, returned, holder payouts received, current value of the remainder and total result.
+- **Wallet & stats:** NEAR and token balances with values, volume, trades in the last 24h, deposits and the main funding source.
+- **Filters** (trades / transfers / payouts / other), **search** by token, hash or account, **CSV export**. Runs of small holder payouts are folded into one card.
+- **Language:** English (default) or Russian. **Theme:** system, light or dark. Both are in Settings and are remembered.
 
-Всё работает в браузере, сервер не нужен.
+## Data sources
 
-| Что | Откуда |
+Everything runs in the browser, no server needed.
+
+| What | Where from |
 |---|---|
-| История и новые транзакции, receipts, логи | [FastNEAR Transactions API](https://tx.main.fastnear.com) (`/v0/account`, `/v0/transactions`) |
-| Баланс NEAR, метаданные токенов (`ft_metadata`, `ft_total_supply`) | NEAR RPC (FastNEAR с резервными узлами) |
-| Балансы токенов | FastNEAR API (`/v1/account/{id}/full`) |
-| Данные запусков Nearly (цена, иконка, launch id → токен) | `nearly.trade/api` |
-| Цены | Intear Prices, резерв — Rhea (`api.ref.finance`) |
+| Transaction history, receipts, logs | [FastNEAR Transactions API](https://tx.main.fastnear.com) (`/v0/account`, `/v0/transactions`) |
+| NEAR balance, token metadata, DCL pool state (live prices) | NEAR RPC, rotating between FastNEAR, dRPC and other public nodes |
+| Token balances | FastNEAR API (`/v1/account/{id}/full`) |
+| Nearly launch data (price, icon, launch id → token) | `nearly.trade/api` |
+| Prices | Rhea DCL pools (live), Intear Prices, Rhea price list as a fallback |
 
-Суммы считаются по событиям NEP-141 (`ft_transfer` и `ft_mint`/`ft_burn`), текстовым логам wNEAR, событиям свапов Rhea DCL (`dcl.ref`) и Rhea v2 (`Swapped … for …`) и по депозитам receipts. Возвраты газа не учитываются.
+Amounts come from NEP-141 events (`ft_transfer`, `ft_mint`, `ft_burn`), wNEAR text logs, Rhea DCL (`dcl.ref`) and Rhea v2 (`Swapped … for …`) swap events, and receipt deposits. Gas refunds are ignored.
 
-## Тесты
+## Tests
 
-`tests/index.html` — набор из 50 тестов, запускается в браузере. Тесты проверяют парсер, тексты постов, PnL, правила оповещений и защиту от XSS на реальных транзакциях этого кошелька и на синтетических случаях. Тесты нужно открывать через любой статический сервер:
+`tests/index.html` runs about 50 tests in the browser. They cover the parser, post texts in both languages, PnL, alert rules and XSS safety, using real transactions and synthetic edge cases. Open the tests through any static server:
 
 ```bash
 python -m http.server 8000
 ```
 
-Затем откройте http://localhost:8000/tests/. На Vercel папка `tests/` не выкладывается (см. `.vercelignore`).
+Then open http://localhost:8000/tests/. The `tests/` folder is not deployed to Vercel (see `.vercelignore`).
 
-## Ограничения
+## Limitations
 
-- Для аккаунтов с историей больше 1000 транзакций сразу загружаются последние 200, остальные — кнопкой «Загрузить более ранние». PnL считается только по загруженной истории.
-- USD-оценки считаются по текущему курсу NEAR.
-- У FastNEAR есть лимит запросов для анонимных клиентов. Обычному посетителю его хватает, но если открыть много вкладок с одного IP, API может временно отвечать 429. Тогда в статусе появится «API транзакций не отвечает», и приложение будет повторять запрос с нарастающей паузой. Чтобы снять лимит, создайте бесплатный *браузерный* ключ FastNEAR с привязкой к домену сайта (https://docs.fastnear.com/auth) и впишите его в `FASTNEAR_API_KEY` в `js/config.js`.
+- **Long histories.** For accounts with more than 1000 transactions only the latest 200 load at first; use "Load earlier" for the rest. PnL covers the loaded history only.
+- **USD values** use the current NEAR price.
+- **Rate limits.** Public APIs rate-limit anonymous clients. A normal visitor stays well within the limits, but many tabs from one IP can hit them. Then the status shows "Transactions API not responding" and the app retries with growing pauses.
+  - RPC calls rotate between several providers, so one provider's limit does not stop the feed.
+  - To lift the FastNEAR limit, create a free *browser* key restricted to your site's domain (https://docs.fastnear.com/auth) and put it into `FASTNEAR_API_KEY` in `js/config.js`.

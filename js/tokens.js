@@ -1,7 +1,7 @@
 // Token metadata, Nearly launch info and prices, with in-memory + localStorage caches.
 
 import { viewFunction, nearlyLaunch, intearPrice, refPriceList } from './api.js';
-import { NEAR_ID, WNEAR, tokenFamily } from './config.js';
+import { NEAR_ID, WNEAR, DCL_CONTRACT, tokenFamily } from './config.js';
 import { storageGet, storageSet } from './util.js';
 
 const META_KEY = 'nwm.meta.v2';
@@ -11,7 +11,15 @@ const metas = new Map(Object.entries(storageGet(META_KEY, {})));
 const launchById = new Map(Object.entries(storageGet(LAUNCH_KEY, {})));
 const inflight = new Map();
 const launches = new Map(); // token -> { data, at }
-const prices = new Map(); // token -> { near, at }
+const prices = new Map(); // token -> { near, at, source }
+const POOL_FRESH_MS = 20000;
+
+// A live pool price outranks slower sources (Nearly API, price aggregators) while it is fresh.
+function setPrice(token, near, source) {
+  const cur = prices.get(token);
+  if (source !== 'pool' && cur?.source === 'pool' && Date.now() - cur.at < POOL_FRESH_MS) return;
+  prices.set(token, { near, at: Date.now(), source });
+}
 let nearUsd = null;
 let refList = null;
 let refAt = 0;
@@ -128,7 +136,7 @@ function rememberLaunch(data) {
     launchById.set(String(data.id), data.token);
     storageSet(LAUNCH_KEY, Object.fromEntries(launchById));
   }
-  if (Number.isFinite(data.price_near) && data.price_near > 0) prices.set(data.token, { near: data.price_near, at: Date.now() });
+  if (Number.isFinite(data.price_near) && data.price_near > 0) setPrice(data.token, data.price_near, 'nearly');
 }
 
 export function launchInfo(token) {
@@ -202,14 +210,71 @@ export async function refreshPrices(tokens) {
       }
       const usd = await intearPrice(t);
       if (usd && nearUsd) {
-        prices.set(t, { near: usd / nearUsd, at: Date.now() });
+        setPrice(t, usd / nearUsd, 'intear');
         return;
       }
       throw new Error('no price');
     } catch {
       const list = await refPrices();
       const usd = Number(list?.[t]?.price);
-      if (usd > 0 && nearUsd) prices.set(t, { near: usd / nearUsd, at: Date.now() });
+      if (usd > 0 && nearUsd) setPrice(t, usd / nearUsd, 'ref');
     }
   }));
+}
+
+// ---- Live prices straight from Rhea DCL pools ----
+
+const poolDecimals = (id) => (id === WNEAR ? 24 : decimals(id));
+
+// Price of one token_x in token_y for a DCL pool: 1.0001^current_point scaled by decimals.
+export function dclPrice(pool, decX, decY) {
+  return 1.0001 ** Number(pool.current_point) * 10 ** (decX - decY);
+}
+
+// Walks a set of pair rates from `token` to wNEAR and returns the NEAR price (or null).
+export function routePrice(token, rates) {
+  if (token === WNEAR || token === NEAR_ID) return 1;
+  const seen = new Set([token]);
+  let frontier = [[token, 1]];
+  while (frontier.length) {
+    const next = [];
+    for (const [cur, acc] of frontier) {
+      for (const r of rates) {
+        let to = null;
+        let mult = 0;
+        if (r.x === cur) [to, mult] = [r.y, r.p];
+        else if (r.y === cur) [to, mult] = [r.x, 1 / r.p];
+        if (!to || seen.has(to) || !Number.isFinite(mult) || mult <= 0) continue;
+        if (to === WNEAR) return acc * mult;
+        seen.add(to);
+        next.push([to, acc * mult]);
+      }
+    }
+    frontier = next;
+  }
+  return null;
+}
+
+// tokenPools: Map token -> array of DCL pool ids ("x|y|fee") that connect it to wNEAR.
+export async function refreshPoolPrices(tokenPools, viewFn) {
+  const ids = [...new Set([...tokenPools.values()].flat().filter((id) => id && id.split('|').length === 3))];
+  if (!ids.length) return [];
+  const states = await Promise.all(ids.map((id) => viewFn(DCL_CONTRACT, 'get_pool', { pool_id: id }, { spread: true }).catch(() => null)));
+  const rates = [];
+  states.forEach((st) => {
+    if (!st || st.current_point === undefined) return;
+    const dx = poolDecimals(st.token_x);
+    const dy = poolDecimals(st.token_y);
+    if (dx === null || dy === null) return;
+    rates.push({ x: st.token_x, y: st.token_y, p: dclPrice(st, dx, dy) });
+  });
+  const updated = [];
+  for (const token of tokenPools.keys()) {
+    const p = routePrice(token, rates);
+    if (p && Number.isFinite(p)) {
+      setPrice(token, p, 'pool');
+      updated.push(token);
+    }
+  }
+  return updated;
 }

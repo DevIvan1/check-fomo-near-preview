@@ -258,6 +258,11 @@ body.is-landing .footer { display: none; }
 .kv dd { margin: 0; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
 .kv dd .v.mono { font-size: 12.5px; }
 .kv dd .note { color: var(--muted); margin-left: 6px; }
+.kv dd .live-mark {
+  display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: currentColor;
+  margin-right: 6px; vertical-align: 1px; animation: pulse 2s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) { .kv dd .live-mark { animation: none; } }
 .kv dd .links { margin-left: 8px; font-size: 12px; color: var(--muted); }
 .kv dd .links a + a { margin-left: 8px; }
 .kv dd.pre { white-space: pre-wrap; }

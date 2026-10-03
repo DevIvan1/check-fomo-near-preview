@@ -5,7 +5,7 @@ import { describe, humanError } from '../js/describe.js';
 import { computePositions, positionRows, accountStats } from '../js/positions.js';
 import { normalizeAccount, shouldAlert, nearSize, soundKind } from '../js/rules.js';
 import { toDecimalString, toNumber, fmtNum, big, shortHash, shortAccount, fmtPct, relTime } from '../js/util.js';
-import { safeIcon } from '../js/tokens.js';
+import { safeIcon, dclPrice, routePrice } from '../js/tokens.js';
 import { NEAR_ID } from '../js/config.js';
 import { setLang, t, tp, dictKeys } from '../js/i18n.js';
 
@@ -361,6 +361,43 @@ async function main() {
     ok(now, 'строка Сейчас');
     has(now.note, '+10%');
     eq(now.tone, 'up');
+  });
+  test('живая цена из пула DCL и маршрут через промежуточный токен', () => {
+    approx(dclPrice({ current_point: 43467 }, 18, 24), 7.72064250410077e-05, 1e-15);
+    approx(dclPrice({ current_point: 0 }, 24, 24), 1, 1e-12);
+    const rates = [
+      { x: 'nearly-993927.nearlytrade.near', y: 'wrap.near', p: 0.0009 },
+      { x: 'nearlee.nearlytrade.near', y: 'nearly-993927.nearlytrade.near', p: 0.005 },
+    ];
+    approx(routePrice('nearlee.nearlytrade.near', rates), 0.0009 * 0.005, 1e-15);
+    approx(routePrice('nearly-993927.nearlytrade.near', rates), 0.0009, 1e-15);
+    approx(routePrice('wrap.near', rates), 1, 0);
+    eq(routePrice('unknown.near', rates), null);
+    // reversed pool orientation (wNEAR is token_x)
+    approx(routePrice('usdc.near', [{ x: 'wrap.near', y: 'usdc.near', p: 4.7 }]), 1 / 4.7, 1e-12);
+  });
+  test('живой PnL на покупке: процент, нереализованная прибыль в NEAR и в $', () => {
+    const a = A('BUY_SINGULARTY');
+    const tokens = 7699268.852336594;
+    const now = 0.0000816;
+    const d = describe(a, ctx({ priceNear: () => now, positionOpen: () => true }));
+    const pnl = d.lines.find((l) => l.label === 'PnL');
+    ok(pnl, 'строка PnL');
+    const exp = tokens * now - 500;
+    has(pnl.value, fmtPct((exp / 500) * 100));
+    has(pnl.value, `${fmtNum(exp, { sign: true })} NEAR`);
+    has(pnl.note, '$');
+    eq(pnl.tone, 'up');
+    eq(pnl.live, true);
+    const nowLine = d.lines.find((l) => l.label === 'Сейчас');
+    has(nowLine.note, 'FDV');
+    const closed = describe(a, ctx({ priceNear: () => now, positionOpen: () => false }));
+    eq(closed.lines.find((l) => l.label === 'PnL').value, 'позиция закрыта');
+    const loss = describe(a, ctx({ priceNear: () => 0.00005, positionOpen: () => true })).lines.find((l) => l.label === 'PnL');
+    eq(loss.tone, 'down');
+    has(loss.value, '−');
+    const sell = describe(A('SELL_BATMAN'), ctx({ priceNear: () => 0.00003, positionOpen: () => true }));
+    eq(sell.lines.find((l) => l.label === 'PnL'), undefined, 'у продажи нет живого PnL');
   });
   test('текст: неудачная покупка', () => {
     const d = describe(A('FAILED_BUY_SYNTHETIC'), ctx());

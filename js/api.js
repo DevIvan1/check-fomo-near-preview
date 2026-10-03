@@ -1,6 +1,6 @@
 // Network layer: FastNEAR tx API, NEAR RPC, FastNEAR balances, Nearly and price APIs.
 
-import { TX_API, FASTNEAR_API, RPC_URLS, NEARLY_API, INTEAR_PRICES, REF_PRICES, FASTNEAR_API_KEY } from './config.js';
+import { TX_API, FASTNEAR_API, RPC_URLS, RPC_FAST, NEARLY_API, INTEAR_PRICES, REF_PRICES, FASTNEAR_API_KEY } from './config.js';
 import { sleep, chunk } from './util.js';
 
 export class HttpError extends Error {
@@ -74,15 +74,20 @@ export async function transactions(hashes, { concurrency = 3 } = {}) {
 
 let rpcIndex = 0;
 let rpcTurn = 0;
-// spread: start each call on the next endpoint (round-robin) to share frequent polling between nodes.
+const rpcCooldown = new Map(); // url -> timestamp until which the endpoint is skipped (429 / network errors)
+
+// spread: start each call on the next fast endpoint (round-robin) to share frequent polling.
 export async function rpc(method, params, { spread = false } = {}) {
   let lastErr;
-  // Only the first two endpoints are fast enough for the frequent check; the rest are fallbacks.
-  const start = spread ? rpcTurn++ % Math.min(2, RPC_URLS.length) : rpcIndex;
-  for (let n = 0; n < RPC_URLS.length; n++) {
-    const url = RPC_URLS[(start + n) % RPC_URLS.length];
+  const start = spread ? rpcTurn++ % Math.min(RPC_FAST, RPC_URLS.length) : rpcIndex;
+  const order = RPC_URLS.map((_, n) => (start + n) % RPC_URLS.length);
+  const now = Date.now();
+  // Endpoints in cooldown go last instead of being dropped, so something is always tried.
+  order.sort((a, b) => ((rpcCooldown.get(RPC_URLS[a]) || 0) > now) - ((rpcCooldown.get(RPC_URLS[b]) || 0) > now));
+  for (const i of order) {
+    const url = RPC_URLS[i];
     try {
-      const r = await fetchJson(url, { method: 'POST', body: { jsonrpc: '2.0', id: 'm', method, params }, timeout: 10000, retries: 1 });
+      const r = await fetchJson(url, { method: 'POST', body: { jsonrpc: '2.0', id: 'm', method, params }, timeout: 8000, retries: 0 });
       if (r.error) {
         const msg = r.error.data || r.error.message || JSON.stringify(r.error);
         // Errors about the request itself are returned as-is, no point rotating.
@@ -90,11 +95,13 @@ export async function rpc(method, params, { spread = false } = {}) {
         e.rpc = true;
         throw e;
       }
-      if (!spread) rpcIndex = (start + n) % RPC_URLS.length;
+      rpcCooldown.delete(url);
+      if (!spread) rpcIndex = i;
       return r.result;
     } catch (e) {
       lastErr = e;
       if (e.rpc) throw e;
+      rpcCooldown.set(url, Date.now() + 60000);
     }
   }
   throw lastErr;
@@ -107,11 +114,11 @@ function toB64(str) {
   return btoa(bin);
 }
 
-export async function viewFunction(contract, method, args = {}) {
+export async function viewFunction(contract, method, args = {}, opts) {
   const r = await rpc('query', {
     request_type: 'call_function', finality: 'final', account_id: contract, method_name: method,
     args_base64: toB64(JSON.stringify(args)),
-  });
+  }, opts);
   if (r.error) throw new Error(r.error);
   const text = new TextDecoder().decode(new Uint8Array(r.result));
   return JSON.parse(text);

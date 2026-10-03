@@ -57,6 +57,9 @@ const state = {
   acctSig: null,
   burstUntil: 0,
   historyRetryMs: 5000,
+  nextLiveAt: 0,
+  liveBusy: false,
+  liveTicks: 0,
   nextPriceAt: 0,
   balance: null,
   blockHeight: null,
@@ -242,6 +245,7 @@ function resetAccountState(acc) {
     lastOkAt: 0, errStreak: 0, lastErr: null, balance: null, blockHeight: null, ftBalances: new Map(), ftLoaded: false,
     positions: new Map(), stats: null, pendingNew: 0, loadingHistory: false, polling: false, missingAccount: false,
     detecting: false, detectErr: 0, acctSig: null, burstUntil: 0, historyRetryMs: 5000,
+    nextLiveAt: 0, liveBusy: false, liveTicks: 0,
   });
   $('#newBanner').hidden = true;
 }
@@ -310,6 +314,7 @@ async function switchAccount(acc, { push = true } = {}) {
   state.initialDone = true;
   state.nextPollAt = Date.now() + SAFETY_POLL_MS;
   state.nextDetectAt = Date.now() + 1000;
+  state.nextLiveAt = Date.now() + 1500;
   state.nextPriceAt = Date.now() + 60000;
   refreshPricesAndRender();
 }
@@ -382,7 +387,17 @@ function describeCtx() {
     priceNear: (t) => (t === NEAR_ID || t === WNEAR ? 1 : tokens.priceNear(t)),
     launchToken: tokens.launchToken,
     supply: tokens.supply,
+    positionOpen,
   };
+}
+
+// true while the wallet still holds the token (tracked from trades or seen in balances),
+// false once both say it is gone, null when unknown.
+function positionOpen(token) {
+  const p = state.positions.get(token);
+  const raw = state.ftBalances.get(token);
+  if ((p && p.qty > 0) || (raw && raw !== '0')) return true;
+  return p || state.ftLoaded ? false : null;
 }
 
 function recompute() {
@@ -605,6 +620,56 @@ async function refreshPricesAndRender() {
   renderSide();
 }
 
+// ---------------- live PnL ----------------
+
+// Every pollSec: read the pools of tokens the wallet still holds and refresh those posts' PnL.
+async function livePnlTick() {
+  if (state.liveBusy || !state.account || !state.historyLoaded) return;
+  state.liveBusy = true;
+  const gen = state.generation;
+  try {
+    const tokenPools = new Map();
+    const other = new Set();
+    for (const it of state.items.values()) {
+      const a = it.a;
+      if (a.kind !== 'trade' || a.trade.side === 'swap') continue;
+      const tok = a.trade.token;
+      if (positionOpen(tok) === false) continue;
+      const pools = a.trade.pools.filter((id) => id.split('|').length === 3);
+      if (pools.length) tokenPools.set(tok, [...new Set([...(tokenPools.get(tok) || []), ...pools])]);
+      else other.add(tok);
+    }
+    for (const tok of tokenPools.keys()) other.delete(tok);
+    if (tokenPools.size) await tokens.refreshPoolPrices(tokenPools, api.viewFunction);
+    if (other.size && state.liveTicks % 5 === 0) await withTimeout(tokens.refreshPrices(other), 8000);
+    state.liveTicks += 1;
+    if (gen !== state.generation) return;
+    if (tokenPools.size || other.size) refreshLiveLines(new Set([...tokenPools.keys(), ...other]));
+  } catch (e) {
+    console.warn('live pnl failed', e);
+  } finally {
+    if (gen === state.generation) state.liveBusy = false;
+  }
+}
+
+// Re-describes only the trade posts of the given tokens and swaps changed ones in place.
+function refreshLiveLines(tokenSet) {
+  const ctx = describeCtx();
+  for (const it of state.items.values()) {
+    if (it.a.kind !== 'trade' || !tokenSet.has(it.a.trade.token)) continue;
+    const d = describe(it.a, ctx);
+    const sig = JSON.stringify(d);
+    if (sig === it.sig) continue;
+    it.d = d;
+    const old = it.el;
+    it.el = buildPost(it);
+    it.sig = sig;
+    if (old && old.isConnected) old.replaceWith(it.el);
+  }
+  renderPositions();
+  renderHoldings();
+}
+
 // ---------------- ticker ----------------
 
 function onTick() {
@@ -620,6 +685,10 @@ function onTick() {
   } else if (state.initialDone) {
     if (now >= state.nextDetectAt && !state.detecting) detect();
     if (now >= state.nextPollAt && !state.polling) poll();
+    if (now >= state.nextLiveAt && !state.liveBusy) {
+      state.nextLiveAt = now + state.settings.pollSec * 1000;
+      livePnlTick();
+    }
   }
   if (state.account && state.initialDone && now >= state.nextFullAt) {
     state.nextFullAt = now + 60000;
@@ -756,6 +825,7 @@ function kvList(lines) {
   for (const line of lines) {
     const multi = typeof line.value === 'string' && line.value.includes('\n');
     const dd = el('dd', { class: multi ? 'pre' : '' });
+    if (line.live) dd.append(el('span', { class: `live-mark${line.tone ? ' ' + line.tone : ''}`, 'aria-hidden': 'true' }));
     dd.append(el('span', { class: `v${line.mono ? ' mono' : ''}${line.tone ? ' ' + line.tone : ''}`, title: line.title }, line.value));
     if (line.copy) dd.append(copyBtn(line.copy));
     if (line.note) dd.append(el('span', { class: `note${line.dyn && line.tone ? ' ' + line.tone : ''}` }, line.note));

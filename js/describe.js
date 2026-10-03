@@ -111,6 +111,20 @@ function priceInfo(a, f, ctx) {
   return { price, fdv: supplyN ? price * supplyN : null };
 }
 
+// Live result of a buy if the tokens were valued at the current pool price.
+function pnlLine(tr, now, f, ctx) {
+  if (ctx.positionOpen && ctx.positionOpen(tr.token) === false) return { label: t('l.pnl'), value: t('closed') };
+  const spent = f.num(tr.amountIn, NEAR_ID);
+  const value = f.num(tr.amountOut, tr.token) * now;
+  const pnl = value - spent;
+  const pct = spent ? (pnl / spent) * 100 : null;
+  const usd = ctx.nearUsd ? `≈ ${pnl >= 0 ? '+' : ''}${fmtUsd(pnl * ctx.nearUsd)}` : '';
+  return {
+    label: t('l.pnl'), value: `${fmtPct(pct)} (${fmtNum(pnl, { sign: true })} NEAR)`, note: usd,
+    tone: pnl >= 0 ? 'up' : 'down', dyn: true, live: true,
+  };
+}
+
 export function describe(a, ctx) {
   const f = makeFmt(ctx);
   const out = {
@@ -160,7 +174,10 @@ export function describe(a, ctx) {
         const now = ctx.priceNear ? ctx.priceNear(tr.token) : null;
         if (now && pi.price) {
           const ch = (now / pi.price - 1) * 100;
-          main.push({ label: t('l.now'), value: `${fmtNum(now, { compact: false })} NEAR`, note: t('sinceTrade', fmtPct(ch)), tone: ch >= 0 ? 'up' : 'down', dyn: true });
+          const fdvNow = pi.fdv ? (pi.fdv / pi.price) * now : null;
+          const nowNote = [fdvNow ? t('fdvNow', fmtNum(fdvNow)) : null, t('sinceTrade', fmtPct(ch))].filter(Boolean).join(' · ');
+          main.push({ label: t('l.now'), value: `${fmtNum(now, { compact: false })} NEAR`, note: nowNote, tone: ch >= 0 ? 'up' : 'down', dyn: true });
+          if (tr.side === 'buy') main.push(pnlLine(tr, now, f, ctx));
         }
       }
       if (a.realized && tr.side === 'sell') {
