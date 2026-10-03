@@ -1,8 +1,8 @@
 // Network layer: FastNEAR tx API, NEAR RPC, FastNEAR balances, Nearly and price APIs.
 
-import { TX_API, FASTNEAR_API, RPC_URLS, RPC_FAST, RPC_ARCHIVAL, NEARBLOCKS_API, NEARLY_API, INTEAR_PRICES, REF_PRICES, FASTNEAR_API_KEY } from './config.js?v=90330b4f';
-import { fromRpcTxStatus } from './parser.js?v=90330b4f';
-import { sleep, chunk } from './util.js?v=90330b4f';
+import { TX_API, FASTNEAR_API, RPC_URLS, RPC_FAST, RPC_ARCHIVAL, NEARBLOCKS_API, NEARLY_API, INTEAR_PRICES, REF_PRICES, FASTNEAR_API_KEY } from './config.js?v=ea9cb0bb';
+import { fromRpcTxStatus } from './parser.js?v=ea9cb0bb';
+import { sleep, chunk } from './util.js?v=ea9cb0bb';
 
 export class HttpError extends Error {
   constructor(status, url) {

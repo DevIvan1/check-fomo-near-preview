@@ -1,6 +1,6 @@
 // Pure helpers: encoding, BigInt math, number and time formatting (locale follows the UI language).
 
-import { t, getLocale } from './i18n.js?v=90330b4f';
+import { t, getLocale } from './i18n.js?v=ea9cb0bb';
 
 export function b64ToText(b64) {
   if (typeof b64 !== 'string') return null;
@@ -101,6 +101,14 @@ export function fmtUsd(v) {
       : a >= 1
         ? nf('usd2', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(a)
         : nf('usds', { maximumSignificantDigits: 3 }).format(a);
+  return (v < 0 ? '−$' : '$') + s;
+}
+
+// Compact USD for market caps: $302K, $1.2M.
+export function fmtUsdCompact(v) {
+  if (v === null || v === undefined || !Number.isFinite(v)) return '';
+  const a = Math.abs(v);
+  const s = a >= 1000 ? nf('usdk', { notation: 'compact', maximumFractionDigits: 1 }).format(a) : nf('usd0', { maximumFractionDigits: 0 }).format(a);
   return (v < 0 ? '−$' : '$') + s;
 }
 

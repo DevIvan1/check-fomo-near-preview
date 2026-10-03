@@ -1,20 +1,20 @@
 // UI + live polling loop.
 
-import { DEFAULT_SETTINGS, HISTORY_PAGE, POLL_PAGE, NEAR_ID, WNEAR, explorer } from './config.js?v=90330b4f';
-import { normalizeAccount, shouldAlert, soundKind } from './rules.js?v=90330b4f';
-import * as api from './api.js?v=90330b4f';
-import * as tokens from './tokens.js?v=90330b4f';
-import { analyzeTx } from './parser.js?v=90330b4f';
-import { describe, tokenLinks } from './describe.js?v=90330b4f';
-import { computePositions, positionRows, accountStats, periodSummary } from './positions.js?v=90330b4f';
-import * as alerts from './alerts.js?v=90330b4f';
+import { DEFAULT_SETTINGS, HISTORY_PAGE, POLL_PAGE, NEAR_ID, WNEAR, explorer } from './config.js?v=ea9cb0bb';
+import { normalizeAccount, shouldAlert, soundKind } from './rules.js?v=ea9cb0bb';
+import * as api from './api.js?v=ea9cb0bb';
+import * as tokens from './tokens.js?v=ea9cb0bb';
+import { analyzeTx } from './parser.js?v=ea9cb0bb';
+import { describe, tokenLinks } from './describe.js?v=ea9cb0bb';
+import { computePositions, periodSummary, positionCards, positionsOverview } from './positions.js?v=ea9cb0bb';
+import * as alerts from './alerts.js?v=ea9cb0bb';
 import {
-  fmtNum, fmtUsd, fmtPct, relTime, fmtTime, fmtDateTime, dayLabel, toNumber, shortAccount,
+  fmtNum, fmtUsd, fmtUsdCompact, fmtPct, relTime, fmtTime, fmtDateTime, dayLabel, toNumber, shortAccount,
   storageGet, storageSet, toDecimalString,
-} from './util.js?v=90330b4f';
-import { t, tp, setLang, getLocale, applyStatic } from './i18n.js?v=90330b4f';
-import * as session from './session.js?v=90330b4f';
-import { FollowFeed } from './following.js?v=90330b4f';
+} from './util.js?v=ea9cb0bb';
+import { t, tp, setLang, getLocale, applyStatic } from './i18n.js?v=ea9cb0bb';
+import * as session from './session.js?v=ea9cb0bb';
+import { FollowFeed } from './following.js?v=ea9cb0bb';
 
 const $ = (sel) => document.querySelector(sel);
 const SETTINGS_KEY = 'nwm.settings.v1';
@@ -126,7 +126,6 @@ const state = {
   ftBalances: new Map(),
   ftLoaded: false,
   positions: new Map(),
-  stats: null,
   filter: 'all',
   search: '',
   expanded: new Set(),
@@ -319,7 +318,7 @@ function resetAccountState(acc) {
   Object.assign(state, {
     account: acc, items: new Map(), resumeToken: null, totalCount: null, initialDone: false, historyLoaded: false,
     lastOkAt: 0, errStreak: 0, lastErr: null, balance: null, blockHeight: null, ftBalances: new Map(), ftLoaded: false,
-    positions: new Map(), stats: null, pendingNew: 0, loadingHistory: false, polling: false, missingAccount: false,
+    positions: new Map(), pendingNew: 0, loadingHistory: false, polling: false, missingAccount: false,
     detecting: false, detectErr: 0, acctSig: null, burstUntil: 0, historyRetryMs: 5000,
     nextLiveAt: 0, liveBusy: false, liveTicks: 0,
   });
@@ -484,7 +483,6 @@ function positionOpen(token) {
 function recompute() {
   const analyses = [...state.items.values()].map((i) => i.a);
   state.positions = computePositions(analyses, { decimals: tokens.decimals, launchToken: tokens.launchToken });
-  state.stats = accountStats(analyses);
   const ctx = describeCtx();
   for (const it of state.items.values()) it.d = describe(it.a, ctx);
 }
@@ -656,7 +654,6 @@ async function detect() {
     state.detectErr = 0;
     state.lastOkAt = Date.now();
     renderHeader();
-    renderHoldings();
   } catch {
     failed = true;
     state.detectErr += 1;
@@ -758,10 +755,9 @@ function refreshLiveLines(tokenSet) {
     it.sig = sig;
     if (old && old.isConnected) old.replaceWith(it.el);
   }
-  renderPositions();
-  renderHoldings();
   renderPnlBoard();
   if (state.filter === 'summary') renderSummary();
+  if (state.filter === 'positions') renderPositionsView();
 }
 
 // ---------------- ticker ----------------
@@ -798,7 +794,7 @@ function onTick() {
 
 function startTicker() {
   try {
-    const w = new Worker(new URL('./ticker.js?v=90330b4f', import.meta.url));
+    const w = new Worker(new URL('./ticker.js?v=ea9cb0bb', import.meta.url));
     w.onmessage = onTick;
     w.postMessage({ cmd: 'start', ms: 500 });
   } catch {
@@ -883,6 +879,7 @@ function renderCounts() {
     counts[a.category] = (counts[a.category] || 0) + 1;
     if (!((a.kind === 'payout' && !s.showPayouts) || (a.kind === 'mention' && !s.showMentions))) counts.all += 1;
   }
+  counts.positions = [...state.positions.values()].filter((p) => p.buys || p.sells).length;
   document.querySelectorAll('[data-count]').forEach((n) => {
     const v = counts[n.dataset.count] || 0;
     n.textContent = v ? String(v) : '';
@@ -1004,11 +1001,15 @@ function buildPayoutGroup(items) {
 
 function renderFeed() {
   const summary = state.filter === 'summary';
+  const positions = state.filter === 'positions';
   document.body.classList.toggle('view-summary', summary);
+  document.body.classList.toggle('view-positions', positions);
   $('#summaryView').hidden = !summary;
-  if (summary) {
+  $('#positionsView').hidden = !positions;
+  if (summary || positions) {
     renderCounts();
-    renderSummary();
+    if (summary) renderSummary();
+    else renderPositionsView();
     return;
   }
   const feed = $('#feed');
@@ -1055,6 +1056,97 @@ function liveBalance(t) {
   if (dec === null) return null;
   if (raw === undefined) return state.ftLoaded ? 0 : null;
   return toNumber(raw, dec);
+}
+
+function fmtDuration(ms) {
+  if (ms === null || ms === undefined) return '—';
+  const m = Math.floor(ms / 60000);
+  if (m < 1) return t('dur.lt1m');
+  const d = Math.floor(m / 1440);
+  const h = Math.floor((m % 1440) / 60);
+  const mm = m % 60;
+  if (d) return `${d}${t('dur.d')} ${h}${t('dur.h')}`;
+  if (h) return `${h}${t('dur.h')} ${mm}${t('dur.m')}`;
+  return `${mm}${t('dur.m')}`;
+}
+
+// Market cap in USD (compact, e.g. $302K); falls back to NEAR when the NEAR price is unknown.
+function mcText(mcNear) {
+  if (mcNear === null || mcNear === undefined) return '—';
+  const usd = tokens.getNearUsd();
+  return usd ? fmtUsdCompact(mcNear * usd) : `${fmtNum(mcNear)} NEAR`;
+}
+
+function pnlCell(near, { empty = false } = {}) {
+  if (empty) return { value: '—', small: '', tone: '' };
+  if (near === null || near === undefined) return { value: '…', small: t('pos.priceLoading'), tone: 'muted' };
+  const usd = tokens.getNearUsd();
+  return {
+    value: `${fmtNum(near, { sign: true })} NEAR`,
+    small: usd ? `${near >= 0 ? '+' : '−'}${fmtUsd(Math.abs(near) * usd).replace(/^−?/, '')}` : '',
+    tone: near > 0 ? 'up' : near < 0 ? 'down' : '',
+  };
+}
+
+// Positions tab: one simple card per token, open ones first (FomoApp-style).
+function renderPositionsView() {
+  const box = $('#positionsView');
+  if (!box) return;
+  const cards = positionCards(state.positions, {
+    balance: liveBalance,
+    priceNear: tokens.priceNear,
+    isOpen: positionOpen,
+    supply: (tk) => {
+      const raw = tokens.supply(tk);
+      const dec = tokens.decimals(tk);
+      return raw !== null && dec !== null ? toNumber(raw, dec) : null;
+    },
+  });
+  if (!cards.length) {
+    box.replaceChildren(el('div', { class: 'pos-empty' }, state.historyLoaded ? t('pos.none') : t('loadingHistory')));
+    return;
+  }
+  const o = positionsOverview(cards);
+  const usd = tokens.getNearUsd();
+  const usdOf = (v) => (usd ? `${v >= 0 ? '+' : '−'}${fmtUsd(Math.abs(v) * usd).replace(/^−?/, '')}` : '');
+  const tone = (v) => (v > 0 ? 'up' : v < 0 ? 'down' : '');
+  const head = el('dl', { class: 'po-head' },
+    el('div', {}, el('dt', {}, t('pos.realized')), el('dd', { class: tone(o.realized) }, `${fmtNum(o.realized, { sign: true })} NEAR`, el('small', {}, usdOf(o.realized)))),
+    el('div', {}, el('dt', {}, t('pos.unrealized')), el('dd', { class: tone(o.unrealized) }, `${fmtNum(o.unrealized, { sign: true })} NEAR`, el('small', {}, usdOf(o.unrealized)))),
+    el('div', {}, el('dt', {}, t('pos.winRate')), el('dd', {}, o.winRate !== null ? fmtPct(o.winRate, { sign: false }) : '—', el('small', {}, t('pos.counts', { o: o.open, c: o.closed })))),
+    el('div', {}, el('dt', {}, t('pos.avgHold')), el('dd', {}, fmtDuration(o.avgHoldMs), el('small', {}, `${o.trades} ${tp('tradeWord', o.trades)}`))));
+
+  const list = cards.map((c) => {
+    const sym = tokens.meta(c.token)?.symbol || c.token;
+    const real = pnlCell(c.realized, { empty: !c.sells });
+    const unreal = pnlCell(c.unrealized, { empty: !c.open });
+    const totalTone = c.unpriced ? 'muted' : tone(c.total);
+    const foot = [
+      t('pos.invested', fmtNum(c.invested)),
+      c.returned ? t('pos.returned', fmtNum(c.returned)) : null,
+      c.open ? t('pos.holding', { q: fmtNum(c.held), v: c.valueNear !== null ? fmtNum(c.valueNear) : null }) : null,
+      c.payoutsNear ? t('pos.payouts', fmtNum(c.payoutsNear)) : null,
+      (c.open ? t('pos.holdingFor', fmtDuration(c.holdMs)) : t('pos.held', fmtDuration(c.holdMs))),
+      `${c.buys} ${tp('buyWord', c.buys)} · ${c.sells} ${tp('sellWord', c.sells)}`,
+    ].filter(Boolean).join(' · ');
+    const cell = (label, value, small = '', cls = '') => el('div', {}, el('dt', {}, label), el('dd', { class: cls }, value, small ? el('small', {}, small) : null));
+    return el('article', { class: `pos-card ${c.open ? 'is-open' : 'is-closed'}` },
+      el('div', { class: 'pc-head' },
+        tokenIcon(c.token, 'pos-icon'),
+        el('div', { class: 'pc-title' },
+          el('button', { type: 'button', class: 'pc-sym', title: t('showTradesOf', sym), onclick: () => setSearch(sym) }, sym),
+          el('span', { class: `pc-status ${c.open ? 'open' : 'closed'}` }, t(c.open ? 'pos.open' : 'pos.closed'))),
+        el('div', { class: `pc-total ${totalTone}` },
+          c.unpriced ? '…' : `${fmtNum(c.total, { sign: true })} NEAR`,
+          el('small', {}, c.unpriced ? t('pos.priceLoading') : [usdOf(c.total), c.pct !== null ? fmtPct(c.pct) : null].filter(Boolean).join(' · ')))),
+      el('dl', { class: 'pc-grid' },
+        cell(t('pos.entryMc'), mcText(c.entryMcNear)),
+        c.open ? cell(t('pos.nowMc'), mcText(c.nowMcNear)) : cell(t('pos.exitMc'), mcText(c.exitMcNear)),
+        cell(t('pos.realized'), real.value, real.small, real.tone),
+        cell(t('pos.unrealized'), unreal.value, unreal.small, unreal.tone)),
+      el('div', { class: 'pc-foot' }, foot));
+  });
+  box.replaceChildren(head, ...list, el('p', { class: 'panel-note muted small' }, t('pos.note')));
 }
 
 function renderSummary() {
@@ -1133,111 +1225,11 @@ function renderSummary() {
 
 function renderSide() {
   renderPnlBoard();
-  renderPositions();
-  renderHoldings();
-  renderStats();
-}
-
-function renderPositions() {
-  const box = $('#positions');
-  const live = {
-    balance: (t) => {
-      const raw = state.ftBalances.get(t);
-      const dec = tokens.decimals(t);
-      if (dec === null) return null;
-      if (raw === undefined) return state.ftLoaded ? 0 : null;
-      return toNumber(raw, dec);
-    },
-    priceNear: (t) => tokens.priceNear(t),
-  };
-  const rows = positionRows(state.positions, live);
-  if (!rows.length) {
-    box.replaceChildren(el('div', { class: 'muted small' }, t('noTrades')));
-    return;
-  }
-  const frag = document.createDocumentFragment();
-  for (const r of rows) {
-    const m = tokens.meta(r.token);
-    const sym = m?.symbol || r.token;
-    const pnlCls = r.pnlTotal === null ? 'muted' : r.pnlTotal >= 0 ? 'up' : 'down';
-    const metaLine = [
-      t('invested', fmtNum(r.nearIn)),
-      r.nearOut ? t('withdrawn', fmtNum(r.nearOut)) : null,
-      r.payoutsNear ? t('payoutsShort', fmtNum(r.payoutsNear)) : null,
-    ].filter(Boolean).join(' · ') + ' NEAR';
-    const holdLine = r.open
-      ? t('holds', { q: fmtNum(r.held), value: r.valueNear !== null ? fmtNum(r.valueNear) : null })
-      : t('closed');
-    const btn = el('button', { type: 'button', title: t('showTradesOf', sym), onclick: () => setSearch(sym) },
-      el('div', { class: 'pos-name' }, sym, el('span', { class: 'state' }, `${r.buys}↑ ${r.sells}↓`)));
-    frag.append(el('div', { class: 'pos' },
-      tokenIcon(r.token, 'pos-icon'),
-      el('div', {}, btn, el('div', { class: 'pos-meta' }, metaLine), el('div', { class: 'pos-meta' }, holdLine)),
-      el('div', { class: `pos-pnl ${pnlCls}`, title: t(r.unpriced ? 'priceLoading' : 'pnlFormula') },
-        r.pnlTotal === null ? '…' : `${fmtNum(r.pnlTotal, { sign: true })} NEAR`, el('span', { class: 'pct' }, r.pnlPct !== null ? fmtPct(r.pnlPct) : '')),
-    ));
-  }
-  box.replaceChildren(frag);
-}
-
-function renderHoldings() {
-  const box = $('#holdings');
-  if (!box) return; // the Wallet panel was replaced by the follow feed
-  const frag = document.createDocumentFragment();
-  const usd = tokens.getNearUsd();
-  if (state.balance !== null) {
-    const n = toNumber(state.balance, 24);
-    frag.append(el('div', { class: 'holding' }, el('span', { class: 'h-name' }, 'NEAR'),
-      el('span', { class: 'h-val' }, fmtNum(n, { compact: false }), usd ? el('small', {}, fmtUsd(n * usd)) : null)));
-  }
-  const rows = [];
-  for (const [t, raw] of state.ftBalances) {
-    const m = tokens.meta(t);
-    if (m?.decimals === null || m?.decimals === undefined) continue;
-    const q = toNumber(raw, m.decimals);
-    const p = t === WNEAR ? 1 : tokens.priceNear(t);
-    rows.push({ t, m, q, valueNear: p !== null ? q * p : null });
-  }
-  rows.sort((x, y) => (y.valueNear ?? -1) - (x.valueNear ?? -1));
-  for (const r of rows) {
-    const small = r.valueNear !== null ? `${fmtNum(r.valueNear)} NEAR${usd ? ' · ' + fmtUsd(r.valueNear * usd) : ''}` : t('priceUnknown');
-    const name = el('span', { class: 'h-name', title: r.t }, r.m.symbol);
-    const links = tokenLinks(r.t);
-    if (links[0]) name.append(' ', el('a', { href: links[0].href, target: '_blank', rel: 'noopener noreferrer', class: 'muted small' }, '↗'));
-    frag.append(el('div', { class: 'holding' }, name, el('span', { class: 'h-val' }, fmtNum(r.q), el('small', {}, small))));
-  }
-  if (!frag.childNodes.length) frag.append(el('div', { class: 'muted small' }, '—'));
-  box.replaceChildren(frag);
-}
-
-function renderStats() {
-  const s = state.stats;
-  const dl = $('#stats');
-  if (!s) {
-    dl.replaceChildren();
-    return;
-  }
-  const rows = [
-    [t('st.txs'), `${s.total}${state.totalCount && state.totalCount > s.total ? ` ${t('of')} ${state.totalCount}` : ''}`],
-    [t('st.trades'), t('st.tradesVal', { n: s.trades, b: s.buys, s: s.sells })],
-    [t('st.volume'), `${fmtNum(s.volumeNear)} NEAR`],
-    [t('st.24h'), t('st.24hVal', { n: s.trades24, word: tp('tradeWord', s.trades24), v: fmtNum(s.volume24) })],
-    [t('st.payouts'), `${s.payouts} · ${fmtNum(s.payoutsNear)} NEAR`],
-    [t('st.funded'), `${fmtNum(s.fundedNear)} NEAR`],
-  ];
-  if (s.sentNear) rows.push([t('st.sent'), `${fmtNum(s.sentNear)} NEAR`]);
-  if (s.failed) rows.push([t('st.failed'), String(s.failed)]);
-  const top = [...s.fundedFrom.entries()].sort((x, y) => y[1] - x[1])[0];
-  if (top) rows.push([t('st.source'), shortAccount(top[0]), top[0]]);
-  if (s.firstTs) rows.push([t('st.first'), fmtDateTime(s.firstTs)]);
-  if (s.lastTs) rows.push([t('st.last'), relTime(s.lastTs)]);
-  const frag = document.createDocumentFragment();
-  for (const [k, v, title] of rows) frag.append(el('dt', {}, k), el('dd', { title }, v));
-  dl.replaceChildren(frag);
+  if (state.filter === 'positions') renderPositionsView();
 }
 
 function setSearch(q) {
-  if (state.filter === 'summary') {
+  if (state.filter === 'summary' || state.filter === 'positions') {
     state.filter = 'all';
     document.querySelectorAll('#tabs button').forEach((x) => x.setAttribute('aria-selected', String(x.dataset.filter === 'all')));
   }

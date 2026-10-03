@@ -1,15 +1,15 @@
 // Browser test suite. Open tests/index.html through any static server.
 
-import { analyzeTx, parseLog, statusKind, failureMessage, fromRpcTxStatus } from '../js/parser.js?v=90330b4f';
-import { describe, humanError } from '../js/describe.js?v=90330b4f';
-import { computePositions, positionRows, accountStats, periodSummary } from '../js/positions.js?v=90330b4f';
-import { normalizeAccount, shouldAlert, nearSize, soundKind } from '../js/rules.js?v=90330b4f';
-import { toDecimalString, toNumber, fmtNum, big, shortHash, shortAccount, fmtPct, relTime } from '../js/util.js?v=90330b4f';
-import { safeIcon, dclPrice, routePrice } from '../js/tokens.js?v=90330b4f';
-import { NEAR_ID } from '../js/config.js?v=90330b4f';
-import * as session from '../js/session.js?v=90330b4f';
-import { FollowFeed, isFeedEvent } from '../js/following.js?v=90330b4f';
-import { setLang, t, tp, dictKeys } from '../js/i18n.js?v=90330b4f';
+import { analyzeTx, parseLog, statusKind, failureMessage, fromRpcTxStatus } from '../js/parser.js?v=ea9cb0bb';
+import { describe, humanError } from '../js/describe.js?v=ea9cb0bb';
+import { computePositions, positionRows, accountStats, periodSummary, positionCards, positionsOverview } from '../js/positions.js?v=ea9cb0bb';
+import { normalizeAccount, shouldAlert, nearSize, soundKind } from '../js/rules.js?v=ea9cb0bb';
+import { toDecimalString, toNumber, fmtNum, big, shortHash, shortAccount, fmtPct, relTime } from '../js/util.js?v=ea9cb0bb';
+import { safeIcon, dclPrice, routePrice } from '../js/tokens.js?v=ea9cb0bb';
+import { NEAR_ID } from '../js/config.js?v=ea9cb0bb';
+import * as session from '../js/session.js?v=ea9cb0bb';
+import { FollowFeed, isFeedEvent } from '../js/following.js?v=ea9cb0bb';
+import { setLang, t, tp, dictKeys } from '../js/i18n.js?v=ea9cb0bb';
 
 const ACC = 'hotfrog2879.near';
 const results = [];
@@ -547,6 +547,49 @@ async function main() {
     const none = periodSummary(list, pos, Date.now() + 1000, live);
     eq(none.rows.length, 0);
     eq(none.total, 0);
+  });
+  test('карточки позиций: статус, ТВХ/выход по капе, реализованный и нереализованный PnL', () => {
+    const list = ['BUY_NEARLEE_MULTIHOP', 'BUY_BATMAN', 'SELL_BATMAN', 'SELL_NEARLEE_MULTIHOP', 'BUY_SINGULARTY', 'PAYOUT_NEAR'].map((k) => A(k));
+    const pos = computePositions(list, { decimals, launchToken: (id) => LAUNCHES[id] || null });
+    const SING = 'singularty.nearlytrade.near';
+    const cards = positionCards(pos, {
+      balance: (tk) => (tk === SING ? 7699268.852336594 : 0),
+      priceNear: (tk) => (tk === SING ? 0.0001 : 0.00002),
+      isOpen: (tk) => tk === SING,
+      supply: () => 1e9,
+    }, list[4].timestampMs + 3600000);
+    eq(cards.length, 3);
+    const sing = cards[0];
+    eq(sing.token, SING, 'открытые сверху');
+    eq(sing.open, true);
+    approx(sing.entryMcNear, 500 / ((7699268852336594642823591 + 77770392447844390331551) / 1e18) * 1e9, 1e-3);
+    approx(sing.nowMcNear, 0.0001 * 1e9, 1e-6);
+    eq(sing.realized, 0);
+    approx(sing.unrealized, 769.9268852336594 - 500, 1e-6);
+    approx(sing.pct, ((769.9268852336594 - 500) / 500) * 100, 1e-6);
+    eq(sing.holdMs, 3600000, 'держит час');
+    approx(sing.payoutsNear, 0.0302225888, 1e-9);
+    const bat = cards.find((c) => c.token === 'batman-4.nearlytrade.near');
+    eq(bat.open, false);
+    eq(bat.unrealized, 0);
+    approx(bat.realized, 537.956325446286 - 180, 1e-4);
+    approx(bat.entryMcNear, 9178.99, 0.5, 'ТВХ BATMAN по капе (как FDV на сделке)');
+    ok(bat.exitMcNear > bat.entryMcNear, 'выход выше входа');
+    eq(bat.nowMcNear, null);
+    ok(bat.holdMs > 0);
+    const ov = positionsOverview(cards);
+    eq(ov.open, 1);
+    eq(ov.closed, 2);
+    eq(ov.wins, 1);
+    approx(ov.winRate, 50, 1e-9);
+    approx(ov.realized, (537.956325446286 - 180) + (151.808508 - 200), 1e-3);
+    approx(ov.unrealized, 269.9268852336594, 1e-6);
+    eq(ov.trades, 5);
+    // unknown price: unrealized unknown, flagged
+    const unpriced = positionCards(pos, { balance: () => 1, priceNear: () => null, isOpen: (tk) => tk === SING, supply: () => null })[0];
+    eq(unpriced.unpriced, true);
+    eq(unpriced.unrealized, null);
+    eq(unpriced.entryMcNear, null, 'без supply капы нет');
   });
   test('stats', () => {
     const list = ['BUY_NEARLEE_MULTIHOP', 'SELL_NEARLEE_MULTIHOP', 'FUNDING', 'PAYOUT_NEAR', 'FAILED_BUY_SYNTHETIC'].map((k) => A(k));

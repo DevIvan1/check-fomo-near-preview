@@ -1,7 +1,7 @@
 // Per-token position tracking (average-cost method) and account-level stats.
 
-import { NEAR_ID, WNEAR } from './config.js?v=90330b4f';
-import { toNumber } from './util.js?v=90330b4f';
+import { NEAR_ID, WNEAR } from './config.js?v=ea9cb0bb';
+import { toNumber } from './util.js?v=ea9cb0bb';
 
 const byChainOrder = (x, y) => (x.blockHeight ?? 0) - (y.blockHeight ?? 0) || (x.txIndex ?? 0) - (y.txIndex ?? 0);
 
@@ -14,6 +14,8 @@ export function computePositions(analyses, ctx) {
     if (!pos.has(token)) {
       pos.set(token, {
         token, buys: 0, sells: 0, nearIn: 0, nearOut: 0, bought: 0, sold: 0,
+        // gross = including the token's own transfer tax: what the pool price was based on
+        boughtGross: 0, soldGross: 0,
         qty: 0, cost: 0, realized: 0, payoutsNear: 0, payoutsToken: 0, firstTs: null, lastTs: null,
       });
     }
@@ -34,6 +36,7 @@ export function computePositions(analyses, ctx) {
         p.buys += 1;
         p.nearIn += n;
         p.bought += q;
+        p.boughtGross += toNumber(t.amountOut + (t.taxAmount || 0n), dec);
         p.qty += q;
         p.cost += n;
         a.realized = null;
@@ -43,6 +46,7 @@ export function computePositions(analyses, ctx) {
         p.sells += 1;
         p.nearOut += n;
         p.sold += q;
+        p.soldGross += q;
         const avg = p.qty > 0 ? p.cost / p.qty : 0;
         const costSold = avg * Math.min(q, p.qty); // tokens beyond the tracked qty carry zero cost
         const pnl = n - costSold;
@@ -216,4 +220,57 @@ export function periodSummary(analyses, pos, since, live) {
   s.worst = ranked.length > 1 ? ranked[ranked.length - 1] : null;
   s.rows = list;
   return s;
+}
+
+// Simple position cards (FomoApp-style): status, entry/now/exit market cap, realized and
+// unrealized PnL. Market caps are in NEAR (price x total supply); the UI converts to USD.
+// live: { balance(t) -> number|null, priceNear(t) -> number|null, isOpen(t) -> bool|null, supply(t) -> number|null }
+export function positionCards(pos, live, now = Date.now()) {
+  const cards = [];
+  for (const p of pos.values()) {
+    if (!p.buys && !p.sells) continue; // only payouts: not a traded position
+    const flag = live.isOpen(p.token);
+    const open = flag === true || (flag === null && p.qty > 0);
+    const price = live.priceNear(p.token);
+    const bal = live.balance(p.token);
+    const held = open ? bal ?? p.qty : 0;
+    const valueNear = open && price !== null && price !== undefined ? held * price : null;
+    const unrealized = open ? (valueNear !== null ? valueNear - p.cost : null) : 0;
+    const supply = live.supply(p.token);
+    const mc = (x) => (x !== null && x !== undefined && supply ? x * supply : null);
+    const entryPrice = p.boughtGross > 0 ? p.nearIn / p.boughtGross : null;
+    const exitPrice = p.soldGross > 0 ? p.nearOut / p.soldGross : null;
+    const total = p.realized + (unrealized ?? 0);
+    cards.push({
+      token: p.token, open, buys: p.buys, sells: p.sells,
+      invested: p.nearIn, returned: p.nearOut, payoutsNear: p.payoutsNear,
+      realized: p.realized, unrealized, total,
+      pct: p.nearIn > 0 ? (total / p.nearIn) * 100 : null,
+      held, valueNear, price,
+      entryPrice, exitPrice,
+      entryMcNear: mc(entryPrice), nowMcNear: open ? mc(price) : null, exitMcNear: mc(exitPrice),
+      holdMs: p.firstTs ? Math.max(0, (open ? now : p.lastTs) - p.firstTs) : null,
+      firstTs: p.firstTs, lastTs: p.lastTs,
+      unpriced: open && valueNear === null,
+    });
+  }
+  cards.sort((x, y) => (y.open - x.open) || (y.lastTs ?? 0) - (x.lastTs ?? 0));
+  return cards;
+}
+
+// Profile header for the Positions tab: totals, win rate on closed positions, average hold time.
+export function positionsOverview(cards) {
+  const closed = cards.filter((c) => !c.open);
+  const holds = (closed.length ? closed : cards).map((c) => c.holdMs).filter((x) => x !== null);
+  return {
+    open: cards.length - closed.length,
+    closed: closed.length,
+    realized: cards.reduce((s, c) => s + c.realized, 0),
+    unrealized: cards.reduce((s, c) => s + (c.unrealized ?? 0), 0),
+    payoutsNear: cards.reduce((s, c) => s + c.payoutsNear, 0),
+    wins: closed.filter((c) => c.realized > 0).length,
+    winRate: closed.length ? (closed.filter((c) => c.realized > 0).length / closed.length) * 100 : null,
+    avgHoldMs: holds.length ? holds.reduce((s, x) => s + x, 0) / holds.length : null,
+    trades: cards.reduce((s, c) => s + c.buys + c.sells, 0),
+  };
 }

@@ -18,6 +18,13 @@ Created by [@Checker1crypto](https://x.com/Checker1crypto).
   - **Wallets** tab: manage the followed wallets.
 
   Each followed wallet gets one cheap balance check in turn, and its transactions are read only when the balance changes, plus a safety refresh every 2 minutes. This keeps the feed within public API limits even with dozens of follows.
+- **Positions tab** (right after All), FomoApp-style. A header shows realized and unrealized PnL, win rate on closed positions, average hold time and trade count. Below it, one simple card per token:
+  - status OPEN (green) or CLOSED (red);
+  - entry market cap in USD (average entry of all buys) and the market cap now, or at exit for closed positions;
+  - realized and unrealized PnL in NEAR and USD, total PnL with % on invested;
+  - invested and returned, tokens held, holder payouts, hold time, number of buys and sells.
+
+  Cards refresh live with the pool price. The right column now holds only the following feed.
 - **Louder, longer alerts.** Three-note sounds through a compressor: rising for buys, falling for sells.
 
 ## Features
@@ -63,7 +70,7 @@ python -m http.server 8000
 ```
 
 - **App:** http://localhost:8000/
-- **Tests:** http://localhost:8000/tests/ (60 tests: parser, both languages, PnL and summary, backup-source conversion, alert rules, XSS safety). `tests/` and `tools/` are not deployed to Vercel (see `.vercelignore`).
+- **Tests:** http://localhost:8000/tests/ (61 tests: parser, both languages, PnL and summary, backup-source conversion, alert rules, XSS safety). `tests/` and `tools/` are not deployed to Vercel (see `.vercelignore`).
 
 Before every commit, stamp the module versions:
 
