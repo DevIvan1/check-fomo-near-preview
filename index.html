@@ -10,8 +10,8 @@
   <meta name="author" content="@Checker1crypto (https://x.com/Checker1crypto)">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; worker-src 'self'; style-src 'self'; img-src 'self' data: https:; connect-src https://tx.main.fastnear.com https://api.fastnear.com https://rpc.mainnet.fastnear.com https://free.rpc.fastnear.com https://rpc.mainnet.near.org https://nearly.trade https://prices.intear.tech https://api.ref.finance; base-uri 'none'; form-action 'self'; object-src 'none'">
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
-  <script src="js/theme.js"></script>
-  <link rel="stylesheet" href="css/style.css">
+  <script src="js/theme.js?v=4"></script>
+  <link rel="stylesheet" href="css/style.css?v=4">
 </head>
 <body>
   <header class="topbar">
@@ -25,9 +25,7 @@
         <input id="accountInput" class="account-input" spellcheck="false" placeholder="account.near">
         <button type="submit" class="btn btn-ghost" title="Отслеживать этот аккаунт">Открыть</button>
       </form>
-      <a class="top-credit" href="https://x.com/Checker1crypto" target="_blank" rel="noopener noreferrer" title="Создано @Checker1crypto · X (Twitter)">
-        by <svg class="x-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18.9 2H22l-6.8 7.8L23.2 22h-6.3l-4.9-6.4L6.4 22H3.3l7.3-8.3L2.8 2h6.4l4.4 5.8L18.9 2Zm-1.1 18.1h1.7L7.3 3.8H5.5l12.3 16.3Z"/></svg> <span>@Checker1crypto</span>
-      </a>
+      <a class="top-credit" href="https://x.com/Checker1crypto" target="_blank" rel="noopener noreferrer">by @Checker1crypto</a>
       <div class="top-actions">
         <button class="btn btn-icon" id="soundBtn" type="button" title="Звук оповещений" aria-pressed="true"></button>
         <button class="btn btn-icon" id="notifyBtn" type="button" title="Уведомления на рабочий стол" aria-pressed="false"></button>
@@ -47,6 +45,7 @@
       <input id="landingInput" class="landing-input" spellcheck="false" autocapitalize="off" placeholder="Адрес кошелька">
       <button class="btn" type="submit">Открыть</button>
     </form>
+    <p class="landing-credit">создано by <a href="https://x.com/Checker1crypto" target="_blank" rel="noopener noreferrer">@Checker1crypto</a></p>
   </section>
 
   <main class="layout" id="app" hidden>
@@ -165,16 +164,10 @@
   <div class="toast" id="toast" role="status" hidden></div>
 
   <footer class="footer small">
-    <div class="credit">
-      создано by
-      <a href="https://x.com/Checker1crypto" target="_blank" rel="noopener noreferrer" title="Checker1crypto в X (Twitter)">
-        <svg class="x-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18.9 2H22l-6.8 7.8L23.2 22h-6.3l-4.9-6.4L6.4 22H3.3l7.3-8.3L2.8 2h6.4l4.4 5.8L18.9 2Zm-1.1 18.1h1.7L7.3 3.8H5.5l12.3 16.3Z"/></svg>
-        @Checker1crypto
-      </a>
-    </div>
+    <div class="credit">создано by <a href="https://x.com/Checker1crypto" target="_blank" rel="noopener noreferrer">@Checker1crypto</a></div>
     <div class="sources muted">Данные: FastNEAR (транзакции, балансы), NEAR RPC, Nearly API, Intear / Rhea (цены). Всё считается в браузере, сервер не нужен.</div>
   </footer>
 
-  <script type="module" src="js/app.js"></script>
+  <script type="module" src="js/app.js?v=4"></script>
 </body>
 </html>
