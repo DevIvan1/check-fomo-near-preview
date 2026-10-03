@@ -1,17 +1,17 @@
 // Browser test suite. Open tests/index.html through any static server.
 
-import { analyzeTx, parseLog, statusKind, failureMessage, fromRpcTxStatus } from '../js/parser.js?v=d41ccbfd';
-import { describe, humanError } from '../js/describe.js?v=d41ccbfd';
-import { computePositions, positionRows, accountStats, periodSummary, positionCards, positionsOverview, sortPositionCards } from '../js/positions.js?v=d41ccbfd';
-import { normalizeAccount, shouldAlert, nearSize, soundKind } from '../js/rules.js?v=d41ccbfd';
-import { toDecimalString, toNumber, fmtNum, big, shortHash, shortAccount, fmtPct, relTime } from '../js/util.js?v=d41ccbfd';
-import { safeIcon, dclPrice, routePrice } from '../js/tokens.js?v=d41ccbfd';
-import { NEAR_ID } from '../js/config.js?v=d41ccbfd';
-import * as session from '../js/session.js?v=d41ccbfd';
-import { FollowFeed, isFeedEvent } from '../js/following.js?v=d41ccbfd';
-import { setLang, t, tp, dictKeys } from '../js/i18n.js?v=d41ccbfd';
-import * as lb from '../js/leaderboard.js?v=d41ccbfd';
-import { track, trackEndpoint } from '../js/track.js?v=d41ccbfd';
+import { analyzeTx, parseLog, statusKind, failureMessage, fromRpcTxStatus } from '../js/parser.js?v=e6d5b684';
+import { describe, humanError } from '../js/describe.js?v=e6d5b684';
+import { computePositions, positionRows, accountStats, periodSummary, positionCards, positionsOverview, sortPositionCards } from '../js/positions.js?v=e6d5b684';
+import { normalizeAccount, shouldAlert, nearSize, soundKind } from '../js/rules.js?v=e6d5b684';
+import { toDecimalString, toNumber, fmtNum, big, shortHash, shortAccount, fmtPct, relTime } from '../js/util.js?v=e6d5b684';
+import { safeIcon, dclPrice, routePrice } from '../js/tokens.js?v=e6d5b684';
+import { NEAR_ID } from '../js/config.js?v=e6d5b684';
+import * as session from '../js/session.js?v=e6d5b684';
+import { FollowFeed, isFeedEvent } from '../js/following.js?v=e6d5b684';
+import { setLang, t, tp, dictKeys } from '../js/i18n.js?v=e6d5b684';
+import * as lb from '../js/leaderboard.js?v=e6d5b684';
+import { track, trackEndpoint } from '../js/track.js?v=e6d5b684';
 
 const ACC = 'hotfrog2879.near';
 const results = [];

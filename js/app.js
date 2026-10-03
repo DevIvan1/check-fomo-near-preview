@@ -1,22 +1,22 @@
 // UI + live polling loop.
 
-import { DEFAULT_SETTINGS, HISTORY_PAGE, POLL_PAGE, NEAR_ID, WNEAR, explorer } from './config.js?v=d41ccbfd';
-import { normalizeAccount, shouldAlert, soundKind } from './rules.js?v=d41ccbfd';
-import * as api from './api.js?v=d41ccbfd';
-import * as tokens from './tokens.js?v=d41ccbfd';
-import { analyzeTx } from './parser.js?v=d41ccbfd';
-import { describe, tokenLinks } from './describe.js?v=d41ccbfd';
-import { computePositions, periodSummary, positionCards, positionsOverview, sortPositionCards } from './positions.js?v=d41ccbfd';
-import * as alerts from './alerts.js?v=d41ccbfd';
+import { DEFAULT_SETTINGS, HISTORY_PAGE, POLL_PAGE, NEAR_ID, WNEAR, explorer } from './config.js?v=e6d5b684';
+import { normalizeAccount, shouldAlert, soundKind } from './rules.js?v=e6d5b684';
+import * as api from './api.js?v=e6d5b684';
+import * as tokens from './tokens.js?v=e6d5b684';
+import { analyzeTx } from './parser.js?v=e6d5b684';
+import { describe, tokenLinks } from './describe.js?v=e6d5b684';
+import { computePositions, periodSummary, positionCards, positionsOverview, sortPositionCards } from './positions.js?v=e6d5b684';
+import * as alerts from './alerts.js?v=e6d5b684';
 import {
   fmtNum, fmtUsd, fmtUsdCompact, fmtPct, fmtDateShort, relTime, fmtTime, fmtDateTime, dayLabel, toNumber, shortAccount,
   storageGet, storageSet, toDecimalString,
-} from './util.js?v=d41ccbfd';
-import { t, tp, setLang, getLang, getLocale, applyStatic } from './i18n.js?v=d41ccbfd';
-import * as session from './session.js?v=d41ccbfd';
-import { FollowFeed } from './following.js?v=d41ccbfd';
-import { Leaderboard, WINDOWS as LB_WINDOWS } from './leaderboard.js?v=d41ccbfd';
-import { track } from './track.js?v=d41ccbfd';
+} from './util.js?v=e6d5b684';
+import { t, tp, setLang, getLang, getLocale, applyStatic } from './i18n.js?v=e6d5b684';
+import * as session from './session.js?v=e6d5b684';
+import { FollowFeed } from './following.js?v=e6d5b684';
+import { Leaderboard, WINDOWS as LB_WINDOWS } from './leaderboard.js?v=e6d5b684';
+import { track } from './track.js?v=e6d5b684';
 
 const $ = (sel) => document.querySelector(sel);
 const SETTINGS_KEY = 'nwm.settings.v1';
@@ -813,7 +813,7 @@ function onTick() {
 
 function startTicker() {
   try {
-    const w = new Worker(new URL('./ticker.js?v=d41ccbfd', import.meta.url));
+    const w = new Worker(new URL('./ticker.js?v=e6d5b684', import.meta.url));
     w.onmessage = onTick;
     w.postMessage({ cmd: 'start', ms: 500 });
   } catch {
@@ -1861,7 +1861,8 @@ function init() {
   session.onChange(syncSession);
   syncSession();
   const s = session.getSession();
-  if (s) track('visit', s.accountId, s.wallet); // a connected wallet came back (once per 6 hours)
+  // came back (once per 6 hours): a wallet session is a visit, a typed-in account stays 'manual'
+  if (s) track(s.watchOnly ? 'manual' : 'visit', s.accountId, s.wallet);
   startTicker();
   route();
   window.__nwmReady = true; // seen by boot.js: the app started
