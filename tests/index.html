@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Wallet Monitor — тесты</title>
+  <style>
+    body { font: 14px/1.5 -apple-system, "Segoe UI", Roboto, sans-serif; margin: 24px; color: #1c1c1e; background: #fff; }
+    #summary { font-size: 20px; font-weight: 700; }
+    #summary[data-status="pass"] { color: #2e7a4e; }
+    #summary[data-status="fail"] { color: #b0463e; }
+    ul { list-style: none; padding: 0; }
+    li { padding: 3px 0; border-bottom: 1px solid #eee; }
+    li.fail { color: #b0463e; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <div id="summary">Выполняется…</div>
+  <ul id="results"></ul>
+  <script type="module" src="tests.js"></script>
+</body>
+</html>

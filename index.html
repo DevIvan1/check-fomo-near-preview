@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>NEAR Wallet Monitor</title>
+  <meta name="description" content="Живая лента действий NEAR-кошелька: покупки, продажи, переводы, выплаты — с хешами транзакций и звуковыми оповещениями.">
+  <meta name="color-scheme" content="light dark">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; worker-src 'self'; style-src 'self'; img-src 'self' data: https:; connect-src https://tx.main.fastnear.com https://api.fastnear.com https://rpc.mainnet.fastnear.com https://free.rpc.fastnear.com https://rpc.mainnet.near.org https://nearly.trade https://prices.intear.tech https://api.ref.finance; base-uri 'none'; form-action 'self'; object-src 'none'">
+  <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span class="brand-name">Wallet Monitor</span>
+      </div>
+      <form class="account-form" id="accountForm" autocomplete="off">
+        <label class="sr-only" for="accountInput">Аккаунт NEAR</label>
+        <input id="accountInput" class="account-input" spellcheck="false" placeholder="account.near">
+        <button type="submit" class="btn btn-ghost" title="Отслеживать этот аккаунт">Открыть</button>
+      </form>
+      <div class="top-actions">
+        <button class="btn btn-icon" id="soundBtn" type="button" title="Звук оповещений" aria-pressed="true"></button>
+        <button class="btn btn-icon" id="notifyBtn" type="button" title="Уведомления на рабочий стол" aria-pressed="false"></button>
+        <button class="btn btn-icon" id="settingsBtn" type="button" title="Настройки" aria-haspopup="dialog"></button>
+      </div>
+    </div>
+  </header>
+
+  <div class="audio-hint" id="audioHint" hidden>
+    Браузер блокирует звук до первого действия на странице. <button class="link-btn" id="audioHintBtn" type="button">Включить звук</button>
+  </div>
+
+  <main class="layout">
+    <section class="account-card" id="accountCard" aria-label="Аккаунт">
+      <div class="account-head">
+        <div>
+          <div class="account-id" id="accountId">—</div>
+          <div class="live" id="liveStatus"><span class="live-dot"></span><span class="live-text">подключение…</span></div>
+        </div>
+        <div class="account-balance">
+          <div class="balance-near" id="balanceNear">—</div>
+          <div class="balance-usd muted" id="balanceUsd"></div>
+        </div>
+      </div>
+      <div class="account-links" id="accountLinks"></div>
+    </section>
+
+    <section class="feed-col" aria-label="Лента действий">
+      <div class="feed-toolbar">
+        <div class="tabs" role="tablist" id="tabs">
+          <button role="tab" data-filter="all" aria-selected="true">Все <span class="count" data-count="all"></span></button>
+          <button role="tab" data-filter="trades" aria-selected="false">Сделки <span class="count" data-count="trades"></span></button>
+          <button role="tab" data-filter="transfers" aria-selected="false">Переводы <span class="count" data-count="transfers"></span></button>
+          <button role="tab" data-filter="payouts" aria-selected="false">Выплаты <span class="count" data-count="payouts"></span></button>
+          <button role="tab" data-filter="other" aria-selected="false">Прочее <span class="count" data-count="other"></span></button>
+        </div>
+        <div class="toolbar-row">
+          <input id="searchInput" class="search" type="search" placeholder="Поиск: токен, хеш, аккаунт" spellcheck="false">
+          <button class="btn btn-ghost" id="exportBtn" type="button" title="Скачать ленту в CSV">CSV</button>
+        </div>
+      </div>
+
+      <div class="new-banner" id="newBanner" hidden>
+        <button type="button" id="newBannerBtn">Новые события: <span id="newCount">0</span> — показать</button>
+      </div>
+
+      <ol class="feed" id="feed" aria-live="polite"></ol>
+      <div class="feed-footer">
+        <div class="feed-state muted" id="feedState">Загрузка истории…</div>
+        <button class="btn btn-ghost" id="moreBtn" type="button" hidden>Загрузить более ранние</button>
+      </div>
+    </section>
+
+    <aside class="side-col" aria-label="Сводка">
+      <details class="side-wrap" id="sideWrap" open>
+        <summary class="side-summary">Позиции, кошелёк, статистика</summary>
+        <div class="side-inner">
+          <section class="panel">
+            <h2 class="panel-title">Позиции и PnL</h2>
+            <div id="positions" class="positions"><div class="muted small">Нет сделок</div></div>
+            <p class="panel-note muted small">Метод средней цены. Текущая стоимость — по цене пула сейчас; выплаты холдерам учтены в результате.</p>
+          </section>
+          <section class="panel">
+            <h2 class="panel-title">Кошелёк</h2>
+            <div id="holdings" class="holdings"><div class="muted small">—</div></div>
+          </section>
+          <section class="panel">
+            <h2 class="panel-title">Статистика</h2>
+            <dl id="stats" class="stats"></dl>
+          </section>
+        </div>
+      </details>
+    </aside>
+  </main>
+
+  <dialog class="dialog" id="settingsDialog" aria-labelledby="settingsTitle">
+    <form method="dialog" class="dialog-body" id="settingsForm">
+      <h2 id="settingsTitle" class="dialog-title">Настройки</h2>
+      <label class="field row">
+        <input type="checkbox" name="sound"> <span>Звук при новом событии</span>
+      </label>
+      <label class="field">
+        <span>Громкость</span>
+        <input type="range" name="volume" min="0" max="1" step="0.05">
+      </label>
+      <label class="field">
+        <span>Оповещать о</span>
+        <select name="alertLevel">
+          <option value="all">всех событиях</option>
+          <option value="normal">важных и обычных (без выплат и упоминаний)</option>
+          <option value="trades">только сделках</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>Минимальный размер сделки для оповещения, NEAR</span>
+        <input type="number" name="alertMinNear" min="0" step="any" inputmode="decimal">
+      </label>
+      <label class="field row">
+        <input type="checkbox" name="notify"> <span>Уведомления на рабочий стол</span>
+      </label>
+      <label class="field">
+        <span>Проверять каждые, секунд</span>
+        <input type="number" name="pollSec" min="2" max="60" step="1">
+      </label>
+      <label class="field row">
+        <input type="checkbox" name="showPayouts"> <span>Показывать выплаты холдерам в ленте «Все»</span>
+      </label>
+      <label class="field row">
+        <input type="checkbox" name="showMentions"> <span>Показывать упоминания без движения средств</span>
+      </label>
+      <div class="dialog-actions">
+        <button type="button" class="btn btn-ghost" id="testSoundBtn">Проверить звук</button>
+        <button type="submit" class="btn" value="save">Готово</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div class="toast" id="toast" role="status" hidden></div>
+
+  <footer class="footer muted small">
+    Данные: FastNEAR (транзакции, балансы), NEAR RPC, Nearly API, Intear / Rhea (цены). Всё считается в браузере, сервер не нужен.
+  </footer>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
