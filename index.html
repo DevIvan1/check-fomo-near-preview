@@ -10,8 +10,8 @@
   <meta name="author" content="@Checker1crypto (https://x.com/Checker1crypto)">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; worker-src 'self'; style-src 'self'; img-src 'self' data: https:; connect-src 'self' https://check-fomo-near.vercel.app https://tx.main.fastnear.com https://api.fastnear.com https://rpc.mainnet.fastnear.com https://near.drpc.org https://rpc.shitzuapes.xyz https://free.rpc.fastnear.com https://rpc.mainnet.near.org https://archival-rpc.mainnet.fastnear.com https://api.nearblocks.io https://nearly.trade https://prices.intear.tech https://events-v3.intear.tech https://api.ref.finance; base-uri 'none'; form-action 'self'; object-src 'none'">
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
-  <script src="js/boot.js?v=b8feafcb"></script>
-  <link rel="stylesheet" href="css/style.css?v=b8feafcb">
+  <script src="js/boot.js?v=cebde690"></script>
+  <link rel="stylesheet" href="css/style.css?v=cebde690">
 </head>
 <body>
   <header class="topbar">
@@ -43,20 +43,11 @@
     <button class="link-btn" id="audioHintBtn" type="button" data-i18n="enableSound">Enable sound</button>
   </div>
 
-  <section class="landing" id="landing" aria-label="Wallet search" data-i18n-aria="walletSearch" hidden>
-    <form class="landing-form" id="landingForm" autocomplete="off" role="search">
-      <label class="sr-only" for="landingInput" data-i18n="walletAddress">NEAR wallet address</label>
-      <svg class="landing-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-      <input id="landingInput" class="landing-input" spellcheck="false" autocapitalize="off" placeholder="Wallet address" data-i18n-placeholder="walletPlaceholder">
-      <button class="btn" type="submit" data-i18n="open">Open</button>
-    </form>
-    <p class="landing-credit"><span data-i18n="createdBy">created by</span> <a href="https://x.com/Checker1crypto" target="_blank" rel="noopener noreferrer">@Checker1crypto</a></p>
-  </section>
-
-  <main class="layout" id="app" hidden>
+  <!-- Top traders on the left of every page; the search page or a wallet on the right. -->
+  <div class="shell">
     <aside class="lb-col" aria-label="Top traders" data-i18n-aria="lb.title">
-      <details class="lb-wrap" id="lbWrap" open>
-        <summary class="lb-summary" data-i18n="lb.title">Top traders</summary>
+      <div class="lb-wrap" id="lbWrap">
+        <button type="button" class="lb-summary" id="lbToggle" aria-expanded="true" aria-controls="lbPanel" data-i18n="lb.title">Top traders</button>
         <section class="panel lb-panel" id="lbPanel">
           <div class="lb-top">
             <h2 class="panel-title lb-title" data-i18n="lb.title">Top traders</h2>
@@ -79,79 +70,93 @@
           <p class="lb-partial" id="lbPartial" data-i18n="lb.partial" hidden>Some sources did not respond: the board may be incomplete.</p>
           <p class="lb-note" data-i18n="lb.note"></p>
         </section>
-      </details>
+      </div>
     </aside>
 
-    <section class="account-card" id="accountCard" aria-label="Account" data-i18n-aria="account">
-      <div class="account-head">
-        <div class="account-main">
-          <div class="avatar avatar-lg" id="accountAvatar" aria-hidden="true"></div>
-          <div class="account-ident">
-            <div class="account-id" id="accountId">—</div>
-            <div class="account-name muted small" id="accountName"></div>
-            <div class="live" id="liveStatus"><span class="live-dot"></span><span class="live-text" data-i18n="connecting">connecting…</span></div>
-          </div>
-        </div>
-        <div class="account-side">
-          <div class="account-balance">
-            <div class="balance-near" id="balanceNear">—</div>
-            <div class="balance-usd muted" id="balanceUsd"></div>
-          </div>
-          <div class="account-actions" id="accountActions"></div>
-        </div>
-      </div>
-      <div class="pnl-board" id="pnlBoard"></div>
-      <div class="account-links" id="accountLinks"></div>
-    </section>
+    <div class="shell-main">
+      <section class="landing" id="landing" aria-label="Wallet search" data-i18n-aria="walletSearch" hidden>
+        <form class="landing-form" id="landingForm" autocomplete="off" role="search">
+          <label class="sr-only" for="landingInput" data-i18n="walletAddress">NEAR wallet address</label>
+          <svg class="landing-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <input id="landingInput" class="landing-input" spellcheck="false" autocapitalize="off" placeholder="Wallet address" data-i18n-placeholder="walletPlaceholder">
+          <button class="btn" type="submit" data-i18n="open">Open</button>
+        </form>
+        <p class="landing-credit"><span data-i18n="createdBy">created by</span> <a href="https://x.com/Checker1crypto" target="_blank" rel="noopener noreferrer">@Checker1crypto</a></p>
+      </section>
 
-    <section class="feed-col" aria-label="Activity feed" data-i18n-aria="activityFeed">
-      <div class="feed-toolbar">
-        <div class="tabs" role="tablist" id="tabs">
-          <button role="tab" data-filter="all" aria-selected="true"><span data-i18n="tab.all">All</span> <span class="count" data-count="all"></span></button>
-          <button role="tab" data-filter="positions" aria-selected="false"><span data-i18n="tab.positions">Positions</span> <span class="count" data-count="positions"></span></button>
-          <button role="tab" data-filter="trades" aria-selected="false"><span data-i18n="tab.trades">Trades</span> <span class="count" data-count="trades"></span></button>
-          <button role="tab" data-filter="transfers" aria-selected="false"><span data-i18n="tab.transfers">Transfers</span> <span class="count" data-count="transfers"></span></button>
-          <button role="tab" data-filter="payouts" aria-selected="false"><span data-i18n="tab.payouts">Payouts</span> <span class="count" data-count="payouts"></span></button>
-          <button role="tab" data-filter="other" aria-selected="false"><span data-i18n="tab.other">Other</span> <span class="count" data-count="other"></span></button>
-          <button role="tab" data-filter="summary" aria-selected="false"><span data-i18n="tab.summary">Summary</span></button>
-        </div>
-        <div class="toolbar-row">
-          <input id="searchInput" class="search" type="search" placeholder="Search: token, hash, account" data-i18n-placeholder="searchPlaceholder" spellcheck="false">
-          <button class="btn btn-ghost" id="exportBtn" type="button" title="Download the feed as CSV" data-i18n-title="csvTitle">CSV</button>
-        </div>
-      </div>
-
-      <div class="new-banner" id="newBanner" hidden>
-        <button type="button" id="newBannerBtn"><span data-i18n="newEvents">New events:</span> <span id="newCount">0</span> <span data-i18n="showNew">— show</span></button>
-      </div>
-
-      <ol class="feed" id="feed" aria-live="polite"></ol>
-      <div class="feed-footer">
-        <div class="feed-state muted" id="feedState" data-i18n="loadingHistory">Loading history…</div>
-        <button class="btn btn-ghost" id="moreBtn" type="button" data-i18n="loadEarlier" hidden>Load earlier</button>
-      </div>
-      <section class="summary" id="summaryView" aria-live="polite" hidden></section>
-      <section class="positions-view" id="positionsView" aria-live="polite" hidden></section>
-    </section>
-
-    <aside class="side-col" aria-label="Summary" data-i18n-aria="summary">
-      <details class="side-wrap" id="sideWrap" open>
-        <summary class="side-summary" data-i18n="sidePanels">Following</summary>
-        <div class="side-inner">
-          <section class="panel follow-panel" id="followPanel">
-            <div class="panel-head">
-              <h2 class="panel-title" data-i18n="followingTitle">Following</h2>
-              <div class="seg seg-sm" id="followTabs" role="tablist">
-                <button type="button" role="tab" data-ftab="activity" class="on" data-i18n="fActivity">Activity</button>
-                <button type="button" role="tab" data-ftab="wallets"><span data-i18n="fWallets">Wallets</span> <span class="count" id="followCount"></span></button>
+      <main class="layout" id="app" hidden>
+        <section class="account-card" id="accountCard" aria-label="Account" data-i18n-aria="account">
+          <div class="account-head">
+            <div class="account-main">
+              <div class="avatar avatar-lg" id="accountAvatar" aria-hidden="true"></div>
+              <div class="account-ident">
+                <div class="account-id" id="accountId">—</div>
+                <div class="account-name muted small" id="accountName"></div>
+                <div class="live" id="liveStatus"><span class="live-dot"></span><span class="live-text" data-i18n="connecting">connecting…</span></div>
               </div>
             </div>
-            <div id="followBody" class="follow-body"></div>
-          </section>
-        </div>
-      </details>
-    </aside>
-  </main>
+            <div class="account-side">
+              <div class="account-balance">
+                <div class="balance-near" id="balanceNear">—</div>
+                <div class="balance-usd muted" id="balanceUsd"></div>
+              </div>
+              <div class="account-actions" id="accountActions"></div>
+            </div>
+          </div>
+          <div class="pnl-board" id="pnlBoard"></div>
+          <div class="account-links" id="accountLinks"></div>
+        </section>
+
+        <section class="feed-col" aria-label="Activity feed" data-i18n-aria="activityFeed">
+          <div class="feed-toolbar">
+            <div class="tabs" role="tablist" id="tabs">
+              <button role="tab" data-filter="all" aria-selected="true"><span data-i18n="tab.all">All</span> <span class="count" data-count="all"></span></button>
+              <button role="tab" data-filter="positions" aria-selected="false"><span data-i18n="tab.positions">Positions</span> <span class="count" data-count="positions"></span></button>
+              <button role="tab" data-filter="trades" aria-selected="false"><span data-i18n="tab.trades">Trades</span> <span class="count" data-count="trades"></span></button>
+              <button role="tab" data-filter="transfers" aria-selected="false"><span data-i18n="tab.transfers">Transfers</span> <span class="count" data-count="transfers"></span></button>
+              <button role="tab" data-filter="payouts" aria-selected="false"><span data-i18n="tab.payouts">Payouts</span> <span class="count" data-count="payouts"></span></button>
+              <button role="tab" data-filter="other" aria-selected="false"><span data-i18n="tab.other">Other</span> <span class="count" data-count="other"></span></button>
+              <button role="tab" data-filter="summary" aria-selected="false"><span data-i18n="tab.summary">Summary</span></button>
+            </div>
+            <div class="toolbar-row">
+              <input id="searchInput" class="search" type="search" placeholder="Search: token, hash, account" data-i18n-placeholder="searchPlaceholder" spellcheck="false">
+              <button class="btn btn-ghost" id="exportBtn" type="button" title="Download the feed as CSV" data-i18n-title="csvTitle">CSV</button>
+            </div>
+          </div>
+
+          <div class="new-banner" id="newBanner" hidden>
+            <button type="button" id="newBannerBtn"><span data-i18n="newEvents">New events:</span> <span id="newCount">0</span> <span data-i18n="showNew">— show</span></button>
+          </div>
+
+          <ol class="feed" id="feed" aria-live="polite"></ol>
+          <div class="feed-footer">
+            <div class="feed-state muted" id="feedState" data-i18n="loadingHistory">Loading history…</div>
+            <button class="btn btn-ghost" id="moreBtn" type="button" data-i18n="loadEarlier" hidden>Load earlier</button>
+          </div>
+          <section class="summary" id="summaryView" aria-live="polite" hidden></section>
+          <section class="positions-view" id="positionsView" aria-live="polite" hidden></section>
+        </section>
+
+        <aside class="side-col" aria-label="Summary" data-i18n-aria="summary">
+          <details class="side-wrap" id="sideWrap" open>
+            <summary class="side-summary" data-i18n="sidePanels">Following</summary>
+            <div class="side-inner">
+              <section class="panel follow-panel" id="followPanel">
+                <div class="panel-head">
+                  <h2 class="panel-title" data-i18n="followingTitle">Following</h2>
+                  <div class="seg seg-sm" id="followTabs" role="tablist">
+                    <button type="button" role="tab" data-ftab="activity" class="on" data-i18n="fActivity">Activity</button>
+                    <button type="button" role="tab" data-ftab="wallets"><span data-i18n="fWallets">Wallets</span> <span class="count" id="followCount"></span></button>
+                  </div>
+                </div>
+                <div id="followBody" class="follow-body"></div>
+              </section>
+            </div>
+          </details>
+        </aside>
+      </main>
+    </div>
+  </div>
 
   <dialog class="dialog" id="settingsDialog" aria-labelledby="settingsTitle">
     <form method="dialog" class="dialog-body" id="settingsForm">
@@ -237,6 +242,6 @@
     <div class="sources muted" data-i18n="sources">Data: FastNEAR (transactions, balances), NEAR RPC, Nearly API, Intear (prices, swaps), Rhea (prices, pools). Everything is calculated in your browser. The site keeps a usage log: wallet addresses that connect or are searched here (no IP, no cookies).</div>
   </footer>
 
-  <script type="module" src="js/app.js?v=b8feafcb"></script>
+  <script type="module" src="js/app.js?v=cebde690"></script>
 </body>
 </html>

@@ -1,11 +1,11 @@
 // connect.html: signs the user in with a NEAR wallet (NEAR Connect) or a typed account,
 // stores the session for the app and returns to where the user came from.
 
-import { setSession, clearSession, follow } from './session.js?v=b8feafcb';
-import { normalizeAccount } from './rules.js?v=b8feafcb';
-import { viewAccount } from './api.js?v=b8feafcb';
-import { setLang, t, applyStatic } from './i18n.js?v=b8feafcb';
-import { track } from './track.js?v=b8feafcb';
+import { setSession, clearSession, follow } from './session.js?v=cebde690';
+import { normalizeAccount } from './rules.js?v=cebde690';
+import { viewAccount } from './api.js?v=cebde690';
+import { setLang, t, applyStatic } from './i18n.js?v=cebde690';
+import { track } from './track.js?v=cebde690';
 
 // Pinned official lightweight NEAR wallet connector (zero dependencies), served from this site:
 // no CDN can change the code that runs here. Resolved relative to this module.

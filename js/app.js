@@ -1,22 +1,22 @@
 // UI + live polling loop.
 
-import { DEFAULT_SETTINGS, HISTORY_PAGE, POLL_PAGE, NEAR_ID, WNEAR, explorer } from './config.js?v=b8feafcb';
-import { normalizeAccount, shouldAlert, soundKind } from './rules.js?v=b8feafcb';
-import * as api from './api.js?v=b8feafcb';
-import * as tokens from './tokens.js?v=b8feafcb';
-import { analyzeTx } from './parser.js?v=b8feafcb';
-import { describe, tokenLinks } from './describe.js?v=b8feafcb';
-import { computePositions, periodSummary, positionCards, positionsOverview, sortPositionCards } from './positions.js?v=b8feafcb';
-import * as alerts from './alerts.js?v=b8feafcb';
+import { DEFAULT_SETTINGS, HISTORY_PAGE, POLL_PAGE, NEAR_ID, WNEAR, explorer } from './config.js?v=cebde690';
+import { normalizeAccount, shouldAlert, soundKind } from './rules.js?v=cebde690';
+import * as api from './api.js?v=cebde690';
+import * as tokens from './tokens.js?v=cebde690';
+import { analyzeTx } from './parser.js?v=cebde690';
+import { describe, tokenLinks } from './describe.js?v=cebde690';
+import { computePositions, periodSummary, positionCards, positionsOverview, sortPositionCards } from './positions.js?v=cebde690';
+import * as alerts from './alerts.js?v=cebde690';
 import {
   fmtNum, fmtUsd, fmtUsdCompact, fmtPct, fmtDateShort, relTime, fmtTime, fmtDateTime, dayLabel, toNumber, shortAccount,
   storageGet, storageSet, toDecimalString,
-} from './util.js?v=b8feafcb';
-import { t, tp, setLang, getLang, getLocale, applyStatic } from './i18n.js?v=b8feafcb';
-import * as session from './session.js?v=b8feafcb';
-import { FollowFeed } from './following.js?v=b8feafcb';
-import { Leaderboard, WINDOWS as LB_WINDOWS } from './leaderboard.js?v=b8feafcb';
-import { track } from './track.js?v=b8feafcb';
+} from './util.js?v=cebde690';
+import { t, tp, setLang, getLang, getLocale, applyStatic } from './i18n.js?v=cebde690';
+import * as session from './session.js?v=cebde690';
+import { FollowFeed } from './following.js?v=cebde690';
+import { Leaderboard, WINDOWS as LB_WINDOWS } from './leaderboard.js?v=cebde690';
+import { track } from './track.js?v=cebde690';
 
 const $ = (sel) => document.querySelector(sel);
 const SETTINGS_KEY = 'nwm.settings.v1';
@@ -365,6 +365,8 @@ function showLanding({ push = false } = {}) {
   const input = $('#landingInput');
   input.value = '';
   input.focus();
+  syncLbFold();
+  startLeaderboard(); // the search page shows the top traders too
 }
 
 async function switchAccount(acc, { push = true } = {}) {
@@ -378,6 +380,7 @@ async function switchAccount(acc, { push = true } = {}) {
   document.body.classList.remove('is-landing');
   $('#landing').hidden = true;
   $('#app').hidden = false;
+  syncLbFold();
   updateAudioHint();
   $('#accountInput').value = acc;
   $('#accountId').textContent = acc;
@@ -817,7 +820,7 @@ function onTick() {
 
 function startTicker() {
   try {
-    const w = new Worker(new URL('./ticker.js?v=b8feafcb', import.meta.url));
+    const w = new Worker(new URL('./ticker.js?v=cebde690', import.meta.url));
     w.onmessage = onTick;
     w.postMessage({ cmd: 'start', ms: 500 });
   } catch {
@@ -1688,7 +1691,8 @@ function lbRowEl(r, i) {
     el('button', {
       type: 'button', class: `lb-row${current ? ' is-current' : ''}`, title: tip, 'aria-current': current ? 'true' : null,
       onclick: () => {
-        if (r.account !== state.account) switchAccount(r.account);
+        // through openWallet: not signed in -> the sign-in window; signed in -> logged as looked up
+        if (r.account !== state.account) openWallet(r.account);
         if (window.matchMedia('(max-width: 1179px)').matches) window.scrollTo({ top: 0, behavior: 'smooth' });
       },
     },
@@ -1773,14 +1777,19 @@ function bindLeaderboard() {
     saveSettings();
     renderLeaderboard();
   });
-  // A full column on wide screens; a collapsed block above the wallet on narrower ones.
-  const wrap = $('#lbWrap');
-  const mq = window.matchMedia('(max-width: 1179px)');
-  const apply = () => {
-    wrap.open = !mq.matches;
-  };
-  apply();
-  mq.addEventListener?.('change', apply);
+  $('#lbToggle').addEventListener('click', () => setLbFolded(!$('#lbWrap').classList.contains('folded')));
+  syncLbFold();
+}
+
+// A full column on wide screens (CSS ignores folding there). Narrower: a block that is open on
+// the search page and folded above a wallet, so the wallet comes first.
+function setLbFolded(folded) {
+  $('#lbWrap').classList.toggle('folded', folded);
+  $('#lbToggle').setAttribute('aria-expanded', String(!folded));
+}
+
+function syncLbFold() {
+  setLbFolded(!document.body.classList.contains('is-landing'));
 }
 
 function ctxFollow() {

@@ -1,8 +1,8 @@
 // Token metadata, Nearly launch info and prices, with in-memory + localStorage caches.
 
-import { viewFunction, nearlyLaunch, intearPrice, refPriceList } from './api.js?v=b8feafcb';
-import { NEAR_ID, WNEAR, DCL_CONTRACT, tokenFamily } from './config.js?v=b8feafcb';
-import { storageGet, storageSet } from './util.js?v=b8feafcb';
+import { viewFunction, nearlyLaunch, intearPrice, refPriceList } from './api.js?v=cebde690';
+import { NEAR_ID, WNEAR, DCL_CONTRACT, tokenFamily } from './config.js?v=cebde690';
+import { storageGet, storageSet } from './util.js?v=cebde690';
 
 const META_KEY = 'nwm.meta.v2';
 const LAUNCH_KEY = 'nwm.launchmap.v1';
