@@ -10,8 +10,9 @@ import { computePositions, positionRows, accountStats } from './positions.js';
 import * as alerts from './alerts.js';
 import {
   fmtNum, fmtUsd, fmtPct, relTime, fmtTime, fmtDateTime, dayLabel, toNumber, shortAccount,
-  storageGet, storageSet, toDecimalString, plural,
+  storageGet, storageSet, toDecimalString,
 } from './util.js';
+import { t, tp, setLang, getLocale, applyStatic } from './i18n.js';
 
 const $ = (sel) => document.querySelector(sel);
 const SETTINGS_KEY = 'nwm.settings.v1';
@@ -106,11 +107,11 @@ async function copyText(text) {
     try { document.execCommand('copy'); } catch { /* ignore */ }
     ta.remove();
   }
-  toast('Скопировано');
+  toast(t('copied'));
 }
 
 function copyBtn(text) {
-  const b = el('button', { class: 'copy-btn', type: 'button', title: 'Копировать', 'aria-label': 'Копировать' });
+  const b = el('button', { class: 'copy-btn', type: 'button', title: t('copy'), 'aria-label': t('copy') });
   b.innerHTML = ICONS.copy;
   b.addEventListener('click', (e) => {
     e.preventDefault();
@@ -148,13 +149,13 @@ function renderTopButtons() {
   const sb = $('#soundBtn');
   sb.innerHTML = s.sound ? ICONS.soundOn : ICONS.soundOff;
   sb.setAttribute('aria-pressed', String(s.sound));
-  sb.title = s.sound ? 'Звук включён' : 'Звук выключен';
+  sb.title = t(s.sound ? 'soundOn' : 'soundOff');
   const nb = $('#notifyBtn');
   const granted = alerts.notificationsSupported() && Notification.permission === 'granted';
   const on = s.notify && granted;
   nb.innerHTML = on ? ICONS.bellOn : ICONS.bellOff;
   nb.setAttribute('aria-pressed', String(on));
-  nb.title = on ? 'Уведомления на рабочий стол включены' : 'Уведомления на рабочий стол выключены';
+  nb.title = t(on ? 'notifyOn' : 'notifyOff');
   updateAudioHint();
 }
 
@@ -166,7 +167,7 @@ async function setNotify(on) {
   if (on) {
     const p = await alerts.requestNotifications();
     if (p !== 'granted') {
-      toast(p === 'unsupported' ? 'Браузер не поддерживает уведомления' : 'Уведомления запрещены в настройках браузера');
+      toast(t(p === 'unsupported' ? 'notifyUnsupported' : 'notifyDenied'));
       on = false;
     }
   }
@@ -179,6 +180,7 @@ async function setNotify(on) {
 function fillSettingsForm() {
   const f = $('#settingsForm').elements;
   const s = state.settings;
+  f.lang.value = s.lang === 'ru' ? 'ru' : 'en';
   f.theme.value = s.theme || 'auto';
   f.sound.checked = s.sound;
   f.volume.value = s.volume;
@@ -198,6 +200,8 @@ function onSettingsChange(e) {
     setNotify(f.notify.checked);
     return;
   }
+  const langChanged = (f.lang.value === 'ru' ? 'ru' : 'en') !== s.lang;
+  s.lang = f.lang.value === 'ru' ? 'ru' : 'en';
   s.theme = ['light', 'dark'].includes(f.theme.value) ? f.theme.value : 'auto';
   applyTheme(s.theme);
   s.sound = f.sound.checked;
@@ -209,7 +213,24 @@ function onSettingsChange(e) {
   s.showPayouts = f.showPayouts.checked;
   s.showMentions = f.showMentions.checked;
   saveSettings();
-  if (feedChanged) renderFeed();
+  if (langChanged) applyLanguage();
+  else if (feedChanged) renderFeed();
+}
+
+// Switches every visible text to the selected language.
+function applyLanguage() {
+  setLang(state.settings.lang);
+  applyStatic();
+  renderTopButtons();
+  alerts.setBaseTitle(state.account ? `${state.account} · Wallet Monitor` : 'Wallet Monitor');
+  if (state.account) {
+    $('#accountLinks').querySelector('.link-btn').textContent = t('copyAddress');
+    recompute();
+    renderFeed();
+    renderSide();
+    renderLive();
+    updateFooter();
+  }
 }
 
 // ---------------- account switching ----------------
@@ -263,14 +284,14 @@ async function switchAccount(acc, { push = true } = {}) {
   links.replaceChildren(
     el('a', { href: explorer.account(acc), target: '_blank', rel: 'noopener noreferrer' }, 'NearBlocks'),
     el('a', { href: explorer.accountAlt(acc), target: '_blank', rel: 'noopener noreferrer' }, 'Pikespeak'),
-    el('button', { class: 'link-btn', type: 'button', onclick: () => copyText(acc) }, 'Копировать адрес'),
+    el('button', { class: 'link-btn', type: 'button', onclick: () => copyText(acc) }, t('copyAddress')),
   );
   alerts.setBaseTitle(`${acc} · Wallet Monitor`);
   alerts.clearUnread();
   $('#feed').replaceChildren();
   $('#balanceNear').textContent = '—';
   $('#balanceUsd').textContent = '';
-  setFeedState('Загрузка истории…');
+  setFeedState(t('loadingHistory'));
   renderSide();
   renderLive();
 
@@ -305,12 +326,10 @@ function updateFooter() {
   const more = $('#moreBtn');
   more.hidden = !state.resumeToken;
   more.disabled = state.loadingHistory;
-  if (!n && !state.loadingHistory) setFeedState(state.lastErr ? 'Не удалось загрузить историю — повторю автоматически.' : 'У этого аккаунта пока нет транзакций.');
-  else if (state.loadingHistory) setFeedState(`Загрузка… (${n}${total ? ' из ' + total : ''})`);
-  else {
-    const word = (k) => plural(k, ['транзакция', 'транзакции', 'транзакций']);
-    setFeedState(state.resumeToken ? `Показано ${n} из ${total ?? '?'} ${word(total ?? 0)}` : `Вся история: ${n} ${word(n)}`);
-  }
+  if (!n && !state.loadingHistory) setFeedState(t(state.lastErr ? 'historyFailed' : 'noTxs'));
+  else if (state.loadingHistory) setFeedState(t('loadingCount', { n, total }));
+  else if (state.resumeToken) setFeedState(t('shownOf', { n, total: total ?? '?', word: tp('txWord', total ?? 0) }));
+  else setFeedState(t('allHistory', { n, word: tp('txWord', n) }));
 }
 
 async function loadHistory(gen, first) {
@@ -331,7 +350,7 @@ async function loadHistory(gen, first) {
   } catch (e) {
     if (gen !== state.generation) return;
     state.lastErr = e;
-    toast('Ошибка загрузки истории: ' + (e.message || e));
+    toast(t('historyError', e.message || String(e)));
   } finally {
     if (gen === state.generation) {
       state.loadingHistory = false;
@@ -555,7 +574,7 @@ async function refreshBalances(gen, full) {
     if (/does not exist|UNKNOWN_ACCOUNT/i.test(String(e.message)) && !state.missingAccount) {
       state.missingAccount = true;
       state.balance = null;
-      toast('Аккаунт не найден в сети NEAR');
+      toast(t('accountMissing'));
     }
   }
   if (full) {
@@ -630,25 +649,24 @@ function renderLive() {
   const text = box.querySelector('.live-text');
   box.classList.remove('ok', 'err');
   if (!state.initialDone) {
-    text.textContent = state.lastErr ? 'ошибка сети, повтор…' : 'загрузка истории…';
+    text.textContent = state.lastErr ? t('netErrorRetry') : t('loadingHistory');
     if (state.lastErr) box.classList.add('err');
     return;
   }
   const wait = Math.max(0, Math.round((state.nextPollAt - Date.now()) / 1000));
   if (!state.historyLoaded) {
     box.classList.add('err');
-    text.textContent = `API транзакций не отвечает (возможно, лимит запросов) · повтор через ${wait} с`;
+    text.textContent = t('apiDown', wait);
     return;
   }
   if (state.lastErr && state.errStreak > 0) {
     box.classList.add('err');
-    text.textContent = `API транзакций не отвечает (возможно, лимит запросов) · повтор через ${wait} с`;
+    text.textContent = t('apiDown', wait);
     return;
   }
   box.classList.add('ok');
   const ago = state.lastOkAt ? Math.max(0, Math.round((Date.now() - state.lastOkAt) / 1000)) : null;
-  const block = state.blockHeight ? ` · блок ${state.blockHeight.toLocaleString('ru-RU')}` : '';
-  text.textContent = `в эфире · проверка каждые ${state.settings.pollSec} с${ago !== null ? ` · ${ago} с назад` : ''}${block}`;
+  text.textContent = t('live', { sec: state.settings.pollSec, ago, block: state.blockHeight ? state.blockHeight.toLocaleString(getLocale()) : '' });
 }
 
 function renderHeader() {
@@ -724,7 +742,7 @@ function buildPost(it) {
   if (d.subtitle) body.append(el('div', { class: 'post-sub' }, d.subtitle));
   body.append(kvList(d.lines));
   if (d.details.length) {
-    const det = el('details', { class: 'more' }, el('summary', {}, 'Подробнее'), kvList(d.details));
+    const det = el('details', { class: 'more' }, el('summary', {}, t('details')), kvList(d.details));
     if (state.expanded.has(a.hash)) det.open = true;
     det.addEventListener('toggle', () => (det.open ? state.expanded.add(a.hash) : state.expanded.delete(a.hash)));
     body.append(det);
@@ -793,12 +811,12 @@ function buildPayoutGroup(items) {
       el('time', { title: `${fmtDateTime(oldest)} — ${fmtDateTime(newest)}` }, `${fmtTime(oldest).slice(0, 5)}–${fmtTime(newest).slice(0, 5)}`),
       el('span', {}, '·'),
       el('span', { class: 'rel', 'data-ts': newest }, relTime(newest)),
-      el('span', { class: 'tag tag-main' }, 'выплаты'),
+      el('span', { class: 'tag tag-main' }, t('payoutsTag')),
     ),
-    el('div', { class: 'post-title' }, `${items.length} ${plural(items.length, ['выплата', 'выплаты', 'выплат'])} холдерам: ${parts.join(', ') || '—'}`),
+    el('div', { class: 'post-title' }, t('payoutGroup', { n: items.length, word: tp('payoutWord', items.length), parts: parts.join(', ') || '—' })),
     el('div', { class: 'post-sub' }, `Nearly${symbols.size ? ' · ' + [...symbols].join(', ') : ''}`),
   );
-  const det = el('details', { class: 'more' }, el('summary', {}, 'Показать каждую'));
+  const det = el('details', { class: 'more' }, el('summary', {}, t('showEach')));
   const inner = el('ol', { class: 'group-list' });
   if (state.expanded.has(key)) {
     det.open = true;
@@ -845,7 +863,7 @@ function renderFeed() {
   }
   feed.replaceChildren(frag);
   renderCounts();
-  if (!list.length && state.items.size) setFeedState('Нет событий под выбранный фильтр.');
+  if (!list.length && state.items.size) setFeedState(t('noFilterMatch'));
   else updateFooter();
 }
 
@@ -876,7 +894,7 @@ function renderPositions() {
   };
   const rows = positionRows(state.positions, live);
   if (!rows.length) {
-    box.replaceChildren(el('div', { class: 'muted small' }, 'Сделок пока нет'));
+    box.replaceChildren(el('div', { class: 'muted small' }, t('noTrades')));
     return;
   }
   const frag = document.createDocumentFragment();
@@ -885,19 +903,19 @@ function renderPositions() {
     const sym = m?.symbol || r.token;
     const pnlCls = r.pnlTotal === null ? 'muted' : r.pnlTotal >= 0 ? 'up' : 'down';
     const metaLine = [
-      `вложено ${fmtNum(r.nearIn)}`,
-      r.nearOut ? `выведено ${fmtNum(r.nearOut)}` : null,
-      r.payoutsNear ? `выплаты ${fmtNum(r.payoutsNear)}` : null,
+      t('invested', fmtNum(r.nearIn)),
+      r.nearOut ? t('withdrawn', fmtNum(r.nearOut)) : null,
+      r.payoutsNear ? t('payoutsShort', fmtNum(r.payoutsNear)) : null,
     ].filter(Boolean).join(' · ') + ' NEAR';
     const holdLine = r.open
-      ? `держит ${fmtNum(r.held)}${r.valueNear !== null ? ` ≈ ${fmtNum(r.valueNear)} NEAR` : ' (цена неизвестна)'}`
-      : 'позиция закрыта';
-    const btn = el('button', { type: 'button', title: `Показать сделки по ${sym}`, onclick: () => setSearch(sym) },
+      ? t('holds', { q: fmtNum(r.held), value: r.valueNear !== null ? fmtNum(r.valueNear) : null })
+      : t('closed');
+    const btn = el('button', { type: 'button', title: t('showTradesOf', sym), onclick: () => setSearch(sym) },
       el('div', { class: 'pos-name' }, sym, el('span', { class: 'state' }, `${r.buys}↑ ${r.sells}↓`)));
     frag.append(el('div', { class: 'pos' },
       tokenIcon(r.token, 'pos-icon'),
       el('div', {}, btn, el('div', { class: 'pos-meta' }, metaLine), el('div', { class: 'pos-meta' }, holdLine)),
-      el('div', { class: `pos-pnl ${pnlCls}`, title: r.unpriced ? 'Цена токена ещё не загружена' : 'вывод + выплаты + текущая стоимость − вложено' },
+      el('div', { class: `pos-pnl ${pnlCls}`, title: t(r.unpriced ? 'priceLoading' : 'pnlFormula') },
         r.pnlTotal === null ? '…' : `${fmtNum(r.pnlTotal, { sign: true })} NEAR`, el('span', { class: 'pct' }, r.pnlPct !== null ? fmtPct(r.pnlPct) : '')),
     ));
   }
@@ -923,7 +941,7 @@ function renderHoldings() {
   }
   rows.sort((x, y) => (y.valueNear ?? -1) - (x.valueNear ?? -1));
   for (const r of rows) {
-    const small = r.valueNear !== null ? `${fmtNum(r.valueNear)} NEAR${usd ? ' · ' + fmtUsd(r.valueNear * usd) : ''}` : 'цена неизвестна';
+    const small = r.valueNear !== null ? `${fmtNum(r.valueNear)} NEAR${usd ? ' · ' + fmtUsd(r.valueNear * usd) : ''}` : t('priceUnknown');
     const name = el('span', { class: 'h-name', title: r.t }, r.m.symbol);
     const links = tokenLinks(r.t);
     if (links[0]) name.append(' ', el('a', { href: links[0].href, target: '_blank', rel: 'noopener noreferrer', class: 'muted small' }, '↗'));
@@ -941,21 +959,21 @@ function renderStats() {
     return;
   }
   const rows = [
-    ['Транзакций', `${s.total}${state.totalCount && state.totalCount > s.total ? ' из ' + state.totalCount : ''}`],
-    ['Сделок', `${s.trades} (${s.buys} покуп. / ${s.sells} прод.)`],
-    ['Объём сделок', `${fmtNum(s.volumeNear)} NEAR`],
-    ['За 24 ч', `${s.trades24} ${plural(s.trades24, ['сделка', 'сделки', 'сделок'])} · ${fmtNum(s.volume24)} NEAR`],
-    ['Выплаты холдерам', `${s.payouts} · ${fmtNum(s.payoutsNear)} NEAR`],
-    ['Пополнения', `${fmtNum(s.fundedNear)} NEAR`],
+    [t('st.txs'), `${s.total}${state.totalCount && state.totalCount > s.total ? ` ${t('of')} ${state.totalCount}` : ''}`],
+    [t('st.trades'), t('st.tradesVal', { n: s.trades, b: s.buys, s: s.sells })],
+    [t('st.volume'), `${fmtNum(s.volumeNear)} NEAR`],
+    [t('st.24h'), t('st.24hVal', { n: s.trades24, word: tp('tradeWord', s.trades24), v: fmtNum(s.volume24) })],
+    [t('st.payouts'), `${s.payouts} · ${fmtNum(s.payoutsNear)} NEAR`],
+    [t('st.funded'), `${fmtNum(s.fundedNear)} NEAR`],
   ];
-  if (s.sentNear) rows.push(['Выводы', `${fmtNum(s.sentNear)} NEAR`]);
-  if (s.failed) rows.push(['Неудачных сделок', String(s.failed)]);
+  if (s.sentNear) rows.push([t('st.sent'), `${fmtNum(s.sentNear)} NEAR`]);
+  if (s.failed) rows.push([t('st.failed'), String(s.failed)]);
   const top = [...s.fundedFrom.entries()].sort((x, y) => y[1] - x[1])[0];
-  if (top) rows.push(['Основной источник', shortAccount(top[0])]);
-  if (s.firstTs) rows.push(['Первая активность', fmtDateTime(s.firstTs)]);
-  if (s.lastTs) rows.push(['Последняя', relTime(s.lastTs)]);
+  if (top) rows.push([t('st.source'), shortAccount(top[0]), top[0]]);
+  if (s.firstTs) rows.push([t('st.first'), fmtDateTime(s.firstTs)]);
+  if (s.lastTs) rows.push([t('st.last'), relTime(s.lastTs)]);
   const frag = document.createDocumentFragment();
-  for (const [k, v] of rows) frag.append(el('dt', {}, k), el('dd', { title: k === 'Основной источник' && top ? top[0] : undefined }, v));
+  for (const [k, v, title] of rows) frag.append(el('dt', {}, k), el('dd', { title }, v));
   dl.replaceChildren(frag);
 }
 
@@ -1012,7 +1030,7 @@ function bindUI() {
     e.preventDefault();
     const acc = normalizeAccount($('#accountInput').value);
     if (!acc) {
-      toast('Некорректный аккаунт NEAR');
+      toast(t('badAccount'));
       return;
     }
     if (acc !== state.account) switchAccount(acc);
@@ -1022,7 +1040,7 @@ function bindUI() {
     e.preventDefault();
     const acc = normalizeAccount($('#landingInput').value);
     if (!acc) {
-      toast('Некорректный адрес NEAR-кошелька');
+      toast(t('badAddress'));
       return;
     }
     switchAccount(acc);
@@ -1060,7 +1078,7 @@ function bindUI() {
   });
   $('#testSoundBtn').addEventListener('click', async () => {
     await unlock();
-    if (!alerts.playSound('buy', state.settings.volume)) toast('Звук заблокирован браузером');
+    if (!alerts.playSound('buy', state.settings.volume)) toast(t('soundBlocked'));
   });
 
   $('#tabs').addEventListener('click', (e) => {
@@ -1133,6 +1151,8 @@ function route() {
 }
 
 function init() {
+  setLang(state.settings.lang);
+  applyStatic();
   applyTheme(state.settings.theme);
   try {
     localStorage.removeItem('nwm.account.v1'); // older versions remembered the last wallet; we no longer do

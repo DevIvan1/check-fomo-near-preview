@@ -7,6 +7,7 @@ import { normalizeAccount, shouldAlert, nearSize, soundKind } from '../js/rules.
 import { toDecimalString, toNumber, fmtNum, big, shortHash, shortAccount, fmtPct, relTime } from '../js/util.js';
 import { safeIcon } from '../js/tokens.js';
 import { NEAR_ID } from '../js/config.js';
+import { setLang, t, tp, dictKeys } from '../js/i18n.js';
 
 const ACC = 'hotfrog2879.near';
 const results = [];
@@ -53,6 +54,7 @@ const ctx = (extra = {}) => ({
 const decimals = (id) => (id === NEAR_ID ? 24 : META[id]?.decimals ?? null);
 
 async function main() {
+  setLang('ru'); // most expectations below are the Russian texts; English is checked at the end
   const fx = await (await fetch('./fixtures.json')).json();
   const A = (key, account = ACC) => analyzeTx(fx[key], account);
 
@@ -482,6 +484,55 @@ async function main() {
     const node = document.createElement('div');
     node.textContent = d.title; // the app renders via textContent only
     eq(node.querySelector('img'), null);
+  });
+
+  // ---------- English (default UI language) ----------
+  setLang('en');
+  test('i18n: в русском словаре есть все ключи английского', () => {
+    const ru = new Set(dictKeys('ru'));
+    const missing = dictKeys('en').filter((k) => !ru.has(k));
+    eq(missing.join(', '), '', 'нет перевода для');
+  });
+  test('en: числа и время', () => {
+    eq(fmtNum(7699268.85), '7.7M');
+    eq(fmtNum(151.808508), '151.81');
+    eq(fmtNum(0.0302225), '0.03022');
+    eq(fmtNum(38506.6), '38,507');
+    eq(fmtPct(2.56), '+2.6%');
+    eq(relTime(0, 120000), '2 min ago');
+    eq(relTime(1000, 1000), 'just now');
+    eq(tp('txWord', 1), 'transaction');
+    eq(tp('txWord', 72), 'transactions');
+  });
+  test('en: тексты постов', () => {
+    const buy = describe(A('BUY_SINGULARTY'), ctx());
+    eq(buy.title, 'Bought SINGULARTY for 500 NEAR');
+    has(buy.subtitle, 'via Rhea DCL');
+    has(buy.subtitle, 'Nearly launchpad token');
+    has(buy.lines.find((l) => l.label === 'Token tax').value, '(1%)');
+    eq(buy.lines.find((l) => l.label === 'Route').note, '1 pool, fee 1%');
+    eq(buy.tags[0], 'buy');
+    const sell = describe(A('SELL_NEARLEE_MULTIHOP'), ctx());
+    eq(sell.title, 'Sold NEARLEE for 151.81 NEAR');
+    eq(sell.lines.find((l) => l.label === 'Route').note, '2 pools, fee 1%');
+    eq(describe(A('PAYOUT_NEAR'), ctx()).title, 'SINGULARTY holder payout: +0.03022 NEAR');
+    const failed = describe(A('FAILED_BUY_SYNTHETIC'), ctx());
+    eq(failed.title, 'Failed to buy SINGULARTY for 500 NEAR');
+    has(failed.lines.find((l) => l.label === 'Error').value, 'slippage');
+    eq(describe(A('STORAGE_SINGULARTY'), ctx()).title, 'Registered with the SINGULARTY token');
+    eq(describe(A('FUNDING'), ctx()).title, 'Received 385.07 NEAR from a9c866…c61d');
+    eq(describe(A('ACCOUNT_CREATED'), ctx()).title, 'Account created');
+    for (const key of Object.keys(fx)) {
+      const signer = key.startsWith('V2_') || key === 'STOP_POINT_NOFILL' ? fx[key].transaction.signer_id : ACC;
+      const d = describe(analyzeTx(fx[key], signer), ctx());
+      ok(!/[А-Яа-яЁё]/.test(JSON.stringify(d)), key + ': в английском посте остался русский текст');
+    }
+  });
+  test('en/ru: переключение языка меняет тексты', () => {
+    setLang('ru');
+    eq(t('tab.trades'), 'Сделки');
+    setLang('en');
+    eq(t('tab.trades'), 'Trades');
   });
 
   render();

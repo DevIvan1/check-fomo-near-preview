@@ -1,5 +1,7 @@
 // Static configuration: endpoints, known contracts and labels.
 
+import { t } from './i18n.js';
+
 export const TX_API = 'https://tx.main.fastnear.com/v0';
 export const FASTNEAR_API = 'https://api.fastnear.com/v1';
 export const RPC_URLS = [
@@ -22,6 +24,7 @@ export const HISTORY_PAGE = 200; // tx-api max page size
 export const POLL_PAGE = 25;
 
 export const DEFAULT_SETTINGS = {
+  lang: 'en', // 'en' | 'ru'
   theme: 'auto', // 'auto' | 'light' | 'dark'
   sound: true,
   volume: 0.6,
@@ -62,7 +65,7 @@ export function tokenFamily(id) {
 export function contractName(id) {
   if (!id) return '';
   if (CONTRACTS[id]) return CONTRACTS[id].name;
-  if (/\.pool(v1)?\.near$/.test(id)) return `валидатор ${id}`;
+  if (/\.pool(v1)?\.near$/.test(id)) return t('validator', id);
   return id;
 }
 

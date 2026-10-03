@@ -1,8 +1,9 @@
-// Builds the human-readable post (Russian) for an analysed transaction.
-// Pure: everything external comes through `ctx`.
+// Builds the human-readable post for an analysed transaction (texts come from i18n).
+// Pure apart from the current language: everything external comes through `ctx`.
 
 import { NEAR_ID, WNEAR, contractName, tokenFamily, explorer } from './config.js';
-import { toNumber, toDecimalString, fmtNum, fmtUsd, fmtPct, shortAccount, shortHash, absBig, isImplicit, plural } from './util.js';
+import { toNumber, toDecimalString, fmtNum, fmtUsd, fmtPct, shortAccount, shortHash, absBig, isImplicit } from './util.js';
+import { t, tp, getLocale } from './i18n.js';
 
 const GLYPHS = {
   transfer_in: '↓', transfer_out: '↑', ft_in: '↓', ft_out: '↑', receive_multi: '↓', debit: '↑',
@@ -26,7 +27,7 @@ export function makeFmt(ctx) {
   };
   const amt = (amount, id, { sign = false } = {}) => {
     const d = dec(id);
-    if (d === null) return `${sign && amount > 0n ? '+' : ''}${amount.toString()} (сырое) ${sym(id)}`;
+    if (d === null) return `${sign && amount > 0n ? '+' : ''}${amount.toString()} (${t('raw')}) ${sym(id)}`;
     return `${fmtNum(toNumber(amount, d), { sign })} ${sym(id)}`;
   };
   const full = (amount, id) => {
@@ -53,7 +54,7 @@ function poolFee(pool) {
 
 function familyText(token) {
   const f = tokenFamily(token);
-  return f ? `токен лаунчпада ${f.name}` : '';
+  return f ? t('family', f.name) : '';
 }
 
 export function tokenLinks(id) {
@@ -67,13 +68,13 @@ export function tokenLinks(id) {
 
 function txLine(a) {
   return {
-    label: 'Транзакция', value: shortHash(a.hash, 8, 6), title: a.hash, mono: true, copy: a.hash,
+    label: t('l.transaction'), value: shortHash(a.hash, 8, 6), title: a.hash, mono: true, copy: a.hash,
     links: [{ text: 'NearBlocks', href: explorer.tx(a.hash) }, { text: 'Pikespeak', href: explorer.txAlt(a.hash) }],
   };
 }
 
-function tokenLine(id, f, label = 'Токен') {
-  return { label, value: id, mono: true, copy: id, links: tokenLinks(id), title: f.sym(id) };
+function tokenLine(id, f) {
+  return { label: t('l.token'), value: id, mono: true, copy: id, links: tokenLinks(id), title: f.sym(id) };
 }
 
 function accountLine(label, id) {
@@ -97,16 +98,16 @@ export function deltaParts(a, f) {
 }
 
 function priceInfo(a, f, ctx) {
-  const t = a.trade;
-  if (!t || t.side === 'swap') return null;
-  const nearAmt = t.side === 'buy' ? t.amountIn : t.amountOut;
-  const tokAmt = t.side === 'buy' ? t.amountOut + (t.taxAmount || 0n) : t.amountIn;
+  const tr = a.trade;
+  if (!tr || tr.side === 'swap') return null;
+  const nearAmt = tr.side === 'buy' ? tr.amountIn : tr.amountOut;
+  const tokAmt = tr.side === 'buy' ? tr.amountOut + (tr.taxAmount || 0n) : tr.amountIn;
   const nearN = f.num(nearAmt, NEAR_ID);
-  const tokN = f.num(tokAmt, t.token);
+  const tokN = f.num(tokAmt, tr.token);
   if (!nearN || !tokN) return null;
   const price = nearN / tokN;
-  const supply = ctx.supply ? ctx.supply(t.token) : null;
-  const supplyN = supply ? f.num(supply, t.token) : null;
+  const supply = ctx.supply ? ctx.supply(tr.token) : null;
+  const supplyN = supply ? f.num(supply, tr.token) : null;
   return { price, fdv: supplyN ? price * supplyN : null };
 }
 
@@ -121,103 +122,100 @@ export function describe(a, ctx) {
 
   switch (a.kind) {
     case 'trade': {
-      const t = a.trade;
-      out.icon = { token: t.token };
-      const venue = venueText(t.venues);
-      const fam = familyText(t.token);
-      sub.push(`через ${venue}`);
-      if (t.internal) sub.push('с внутреннего баланса DEX');
+      const tr = a.trade;
+      out.icon = { token: tr.token };
+      const fam = familyText(tr.token);
+      sub.push(t('via', venueText(tr.venues)));
+      if (tr.internal) sub.push(t('internal'));
       if (fam) sub.push(fam);
       const pi = priceInfo(a, f, ctx);
-      if (t.side === 'buy') {
+      if (tr.side === 'buy') {
         out.tone = 'buy';
-        out.title = `Купил ${f.sym(t.token)} на ${f.amt(t.amountIn, NEAR_ID)}`;
-        main.push({ label: 'Потратил', value: f.amt(t.amountIn, NEAR_ID), title: f.full(t.amountIn, NEAR_ID), note: f.usd(t.amountIn) });
-        main.push({ label: 'Получил', value: f.amt(t.amountOut, t.token), title: f.full(t.amountOut, t.token) });
-        if (t.taxAmount > 0n) {
-          const pct = (f.num(t.taxAmount, t.token) / f.num(t.amountOut + t.taxAmount, t.token)) * 100;
-          main.push({ label: 'Налог токена', value: `${f.amt(t.taxAmount, t.token)} (${fmtPct(pct, { sign: false })})`, title: f.full(t.taxAmount, t.token) });
+        out.title = t('t.buy', { sym: f.sym(tr.token), amt: f.amt(tr.amountIn, NEAR_ID) });
+        main.push({ label: t('l.spent'), value: f.amt(tr.amountIn, NEAR_ID), title: f.full(tr.amountIn, NEAR_ID), note: f.usd(tr.amountIn) });
+        main.push({ label: t('l.received'), value: f.amt(tr.amountOut, tr.token), title: f.full(tr.amountOut, tr.token) });
+        if (tr.taxAmount > 0n) {
+          const pct = (f.num(tr.taxAmount, tr.token) / f.num(tr.amountOut + tr.taxAmount, tr.token)) * 100;
+          main.push({ label: t('l.tokenTax'), value: `${f.amt(tr.taxAmount, tr.token)} (${fmtPct(pct, { sign: false })})`, title: f.full(tr.taxAmount, tr.token) });
         }
-      } else if (t.side === 'sell') {
+      } else if (tr.side === 'sell') {
         out.tone = 'sell';
-        out.title = `Продал ${f.sym(t.token)} за ${f.amt(t.amountOut, NEAR_ID)}`;
-        main.push({ label: 'Отдал', value: f.amt(t.amountIn, t.token), title: f.full(t.amountIn, t.token) });
-        if (t.taxAmount > 0n) {
-          const pct = (f.num(t.taxAmount, t.token) / f.num(t.amountIn, t.token)) * 100;
-          main.push({ label: 'Налог токена', value: `${f.amt(t.taxAmount, t.token)} (${fmtPct(pct, { sign: false })})`, title: f.full(t.taxAmount, t.token) });
+        out.title = t('t.sell', { sym: f.sym(tr.token), amt: f.amt(tr.amountOut, NEAR_ID) });
+        main.push({ label: t('l.gave'), value: f.amt(tr.amountIn, tr.token), title: f.full(tr.amountIn, tr.token) });
+        if (tr.taxAmount > 0n) {
+          const pct = (f.num(tr.taxAmount, tr.token) / f.num(tr.amountIn, tr.token)) * 100;
+          main.push({ label: t('l.tokenTax'), value: `${f.amt(tr.taxAmount, tr.token)} (${fmtPct(pct, { sign: false })})`, title: f.full(tr.taxAmount, tr.token) });
         }
-        main.push({ label: 'Получил', value: f.amt(t.amountOut, NEAR_ID), title: f.full(t.amountOut, NEAR_ID), note: f.usd(t.amountOut) });
+        main.push({ label: t('l.received'), value: f.amt(tr.amountOut, NEAR_ID), title: f.full(tr.amountOut, NEAR_ID), note: f.usd(tr.amountOut) });
       } else {
-        out.title = `Обменял ${f.amt(t.amountIn, t.tokenIn)} на ${f.amt(t.amountOut, t.tokenOut)}`;
-        main.push({ label: 'Отдал', value: f.amt(t.amountIn, t.tokenIn), title: f.full(t.amountIn, t.tokenIn) });
-        main.push({ label: 'Получил', value: f.amt(t.amountOut, t.tokenOut), title: f.full(t.amountOut, t.tokenOut) });
+        out.title = t('t.swap', { a: f.amt(tr.amountIn, tr.tokenIn), b: f.amt(tr.amountOut, tr.tokenOut) });
+        main.push({ label: t('l.gave'), value: f.amt(tr.amountIn, tr.tokenIn), title: f.full(tr.amountIn, tr.tokenIn) });
+        main.push({ label: t('l.received'), value: f.amt(tr.amountOut, tr.tokenOut), title: f.full(tr.amountOut, tr.tokenOut) });
       }
       if (pi) {
-        const priceUsd = ctx.nearUsd ? ` ≈ ${fmtUsd(pi.price * ctx.nearUsd)}` : '';
-        main.push({ label: 'Цена', value: `${fmtNum(pi.price, { compact: false })} NEAR за 1 ${f.sym(t.token)}`, note: priceUsd.trim() });
-        if (pi.fdv) main.push({ label: 'FDV на сделке', value: `${fmtNum(pi.fdv)} NEAR`, note: f.usd(BigInt(Math.round(pi.fdv)) * 10n ** 24n) });
+        const priceUsd = ctx.nearUsd ? `≈ ${fmtUsd(pi.price * ctx.nearUsd)}` : '';
+        main.push({ label: t('l.price'), value: t('priceVal', { p: fmtNum(pi.price, { compact: false }), sym: f.sym(tr.token) }), note: priceUsd });
+        if (pi.fdv) main.push({ label: t('l.fdv'), value: `${fmtNum(pi.fdv)} NEAR`, note: f.usd(BigInt(Math.round(pi.fdv)) * 10n ** 24n) });
         out.entryPrice = pi.price;
-        const now = ctx.priceNear ? ctx.priceNear(t.token) : null;
+        const now = ctx.priceNear ? ctx.priceNear(tr.token) : null;
         if (now && pi.price) {
           const ch = (now / pi.price - 1) * 100;
-          main.push({ label: 'Сейчас', value: `${fmtNum(now, { compact: false })} NEAR`, note: `${fmtPct(ch)} с момента сделки`, tone: ch >= 0 ? 'up' : 'down', dyn: true });
+          main.push({ label: t('l.now'), value: `${fmtNum(now, { compact: false })} NEAR`, note: t('sinceTrade', fmtPct(ch)), tone: ch >= 0 ? 'up' : 'down', dyn: true });
         }
       }
-      if (a.realized && t.side === 'sell') {
+      if (a.realized && tr.side === 'sell') {
         const r = a.realized;
-        const tone = r.pnl >= 0 ? 'up' : 'down';
-        main.push({ label: 'Результат', value: `${fmtNum(r.pnl, { sign: true })} NEAR`, note: `${fmtPct(r.pct)} к средней цене входа${r.closed ? ' · позиция закрыта' : ''}`, tone });
+        main.push({ label: t('l.result'), value: `${fmtNum(r.pnl, { sign: true })} NEAR`, note: t('vsAvg', { pct: fmtPct(r.pct), closed: r.closed }), tone: r.pnl >= 0 ? 'up' : 'down' });
       }
-      const routeTxt = t.route.map((x) => f.sym(x)).join(' → ');
-      const fees = [...new Set(t.pools.map(poolFee).filter(Boolean))];
-      main.push({ label: 'Маршрут', value: routeTxt, note: `${t.legs} ${plural(t.legs, ['пул', 'пула', 'пулов'])}${fees.length ? ', комиссия ' + fees.join('/') : ''}` });
-      main.push(tokenLine(t.token, f));
-      if (t.pools.length) out.details.push({ label: 'Пулы', value: t.pools.join('\n'), mono: true });
-      out.csv = { side: t.side, token: t.token, in: f.full(t.amountIn, t.tokenIn), out: f.full(t.amountOut, t.tokenOut) };
-      out.tags.push(t.side === 'buy' ? 'покупка' : t.side === 'sell' ? 'продажа' : 'обмен');
+      const routeTxt = tr.route.map((x) => f.sym(x)).join(' → ');
+      const fees = [...new Set(tr.pools.map(poolFee).filter(Boolean))];
+      main.push({ label: t('l.route'), value: routeTxt, note: `${tr.legs} ${tp('poolWord', tr.legs)}${fees.length ? t('feeNote', fees.join('/')) : ''}` });
+      main.push(tokenLine(tr.token, f));
+      if (tr.pools.length) out.details.push({ label: t('l.pools'), value: tr.pools.join('\n'), mono: true });
+      out.csv = { side: tr.side, token: tr.token, in: f.full(tr.amountIn, tr.tokenIn), out: f.full(tr.amountOut, tr.tokenOut) };
+      out.tags.push(t(tr.side === 'buy' ? 'tag.buy' : tr.side === 'sell' ? 'tag.sell' : 'tag.swap'));
       break;
     }
     case 'trade_failed':
     case 'trade_pending': {
       const it = a.intent;
       const pending = a.kind === 'trade_pending';
+      const mode = pending ? 'pend' : 'fail';
       out.tone = pending ? 'neutral' : 'fail';
       const target = it.tokenIn === NEAR_ID ? it.tokenOut : it.tokenIn;
       out.icon = { token: target };
-      const verb = it.tokenIn === NEAR_ID ? (pending ? 'Покупает' : 'Не удалось купить') : it.tokenOut === NEAR_ID ? (pending ? 'Продаёт' : 'Не удалось продать') : pending ? 'Обменивает' : 'Не удалось обменять';
-      if (it.tokenIn === NEAR_ID) out.title = `${verb} ${f.sym(it.tokenOut)} на ${f.amt(it.amountIn, NEAR_ID)}`;
-      else if (it.tokenOut === NEAR_ID) out.title = `${verb} ${f.amt(it.amountIn, it.tokenIn)}`;
-      else out.title = `${verb} ${f.amt(it.amountIn, it.tokenIn)} на ${f.sym(it.tokenOut)}`;
-      sub.push(`через ${contractName(it.dex)}`);
+      if (it.tokenIn === NEAR_ID) out.title = t(`${mode}.buy`, { sym: f.sym(it.tokenOut), amt: f.amt(it.amountIn, NEAR_ID) });
+      else if (it.tokenOut === NEAR_ID) out.title = t(`${mode}.sell`, { amt: f.amt(it.amountIn, it.tokenIn) });
+      else out.title = t(`${mode}.swap`, { amt: f.amt(it.amountIn, it.tokenIn), sym: f.sym(it.tokenOut) });
+      sub.push(t('via', contractName(it.dex)));
       const fam = familyText(target);
       if (fam) sub.push(fam);
       if (!pending) {
-        const msg = a.failures.map((x) => x.message).filter(Boolean)[0]
-          || (it.stopPoint ? 'цена уже за пределом stop point — ордер не исполнен' : 'обмен не состоялся');
-        main.push({ label: 'Ошибка', value: humanError(msg), title: msg, tone: 'down' });
+        const msg = a.failures.map((x) => x.message).filter(Boolean)[0] || t(it.stopPoint ? 'err.stop' : 'err.noSwap');
+        main.push({ label: t('l.error'), value: humanError(msg), title: msg, tone: 'down' });
         const lost = deltaParts(a, f).filter((p) => p.amount < 0n);
-        main.push({ label: 'Итог', value: lost.length ? lost.map((p) => p.text).join(', ') : 'средства вернулись на кошелёк' });
+        main.push({ label: t('l.outcome'), value: lost.length ? lost.map((p) => p.text).join(', ') : t('refunded') });
       } else {
-        main.push({ label: 'Статус', value: 'транзакция исполняется…' });
+        main.push({ label: t('l.status'), value: t('executingTx') });
       }
       main.push(tokenLine(target, f));
-      out.tags.push(pending ? 'в процессе' : 'ошибка');
+      out.tags.push(t(pending ? 'tag.pending' : 'tag.error'));
       break;
     }
     case 'transfer_out': {
-      out.title = `Отправил ${f.amt(a.amount, NEAR_ID)} → ${shortAccount(a.counterparty)}`;
-      if (a.createdAccount) sub.push('создал новый аккаунт');
-      main.push({ label: 'Сумма', value: f.amt(a.amount, NEAR_ID), title: f.full(a.amount, NEAR_ID), note: f.usd(a.amount) });
-      main.push(accountLine('Получатель', a.counterparty));
+      out.title = t('t.sent', { amt: f.amt(a.amount, NEAR_ID), to: shortAccount(a.counterparty) });
+      if (a.createdAccount) sub.push(t('createdAccount'));
+      main.push({ label: t('l.amount'), value: f.amt(a.amount, NEAR_ID), title: f.full(a.amount, NEAR_ID), note: f.usd(a.amount) });
+      main.push(accountLine(t('l.recipient'), a.counterparty));
       out.csv = { out: f.full(a.amount, NEAR_ID) };
       break;
     }
     case 'transfer_in': {
-      out.title = `Получил ${f.amt(a.amount, NEAR_ID)} от ${shortAccount(a.counterparty)}`;
-      if (isImplicit(a.counterparty)) sub.push('с implicit-аккаунта');
+      out.title = t('t.received', { amt: f.amt(a.amount, NEAR_ID), from: shortAccount(a.counterparty) });
+      if (isImplicit(a.counterparty)) sub.push(t('implicit'));
       if (a.memo) sub.push(`memo: ${a.memo}`);
-      main.push({ label: 'Сумма', value: f.amt(a.amount, NEAR_ID), title: f.full(a.amount, NEAR_ID), note: f.usd(a.amount) });
-      main.push(accountLine('Отправитель', a.counterparty));
+      main.push({ label: t('l.amount'), value: f.amt(a.amount, NEAR_ID), title: f.full(a.amount, NEAR_ID), note: f.usd(a.amount) });
+      main.push(accountLine(t('l.sender'), a.counterparty));
       out.tone = 'buy';
       out.csv = { in: f.full(a.amount, NEAR_ID) };
       break;
@@ -225,11 +223,11 @@ export function describe(a, ctx) {
     case 'ft_out': {
       out.icon = { token: a.token };
       const actual = a.deltas[a.token] ? absBig(a.deltas[a.token]) : a.amount;
-      out.title = `Отправил ${f.amt(actual, a.token)} → ${shortAccount(a.counterparty)}`;
-      if (a.call) sub.push(`с вызовом контракта ${contractName(a.counterparty)}`);
+      out.title = t('t.sent', { amt: f.amt(actual, a.token), to: shortAccount(a.counterparty) });
+      if (a.call) sub.push(t('withCall', contractName(a.counterparty)));
       if (a.memo) sub.push(`memo: ${a.memo}`);
-      main.push({ label: 'Сумма', value: f.amt(actual, a.token), title: f.full(actual, a.token) });
-      main.push(accountLine('Получатель', a.counterparty));
+      main.push({ label: t('l.amount'), value: f.amt(actual, a.token), title: f.full(actual, a.token) });
+      main.push(accountLine(t('l.recipient'), a.counterparty));
       main.push(tokenLine(a.token, f));
       out.csv = { token: a.token, out: f.full(actual, a.token) };
       break;
@@ -237,55 +235,52 @@ export function describe(a, ctx) {
     case 'ft_in': {
       if (a.token) {
         out.icon = { token: a.token };
-        out.title = `Получил ${f.amt(a.amount, a.token)} от ${shortAccount(a.counterparty)}`;
+        out.title = t('t.received', { amt: f.amt(a.amount, a.token), from: shortAccount(a.counterparty) });
         if (a.memo) sub.push(`memo: ${a.memo}`);
-        main.push({ label: 'Сумма', value: f.amt(a.amount, a.token), title: f.full(a.amount, a.token) });
-        main.push(accountLine('Отправитель', a.counterparty));
+        main.push({ label: t('l.amount'), value: f.amt(a.amount, a.token), title: f.full(a.amount, a.token) });
+        main.push(accountLine(t('l.sender'), a.counterparty));
         main.push(tokenLine(a.token, f));
         out.csv = { token: a.token, in: f.full(a.amount, a.token) };
       } else {
-        out.title = `Получил NFT от ${shortAccount(a.counterparty)}`;
+        out.title = t('t.nftIn', shortAccount(a.counterparty));
       }
       out.tone = 'buy';
       break;
     }
     case 'receive_multi':
-    case 'debit': {
-      out.title = a.kind === 'debit' ? `Списание с кошелька (${shortAccount(a.counterparty)})` : `Получил токены от ${shortAccount(a.counterparty)}`;
+    case 'debit':
+      out.title = a.kind === 'debit' ? t('t.debit', shortAccount(a.counterparty)) : t('t.receiveMulti', shortAccount(a.counterparty));
       break;
-    }
-    case 'dex_deposit': {
+    case 'dex_deposit':
       out.icon = { token: a.token };
-      out.title = `Внёс ${f.amt(a.amount, a.token)} на внутренний баланс ${contractName(a.counterparty)}`;
+      out.title = t('t.dexDeposit', { amt: f.amt(a.amount, a.token), dex: contractName(a.counterparty) });
       main.push(tokenLine(a.token, f));
       break;
-    }
-    case 'dex_withdraw': {
+    case 'dex_withdraw':
       out.icon = { token: a.token };
-      out.title = `Вывел ${a.amount > 0n ? f.amt(a.amount, a.token) : f.sym(a.token)} с внутреннего баланса ${contractName(a.counterparty)}`;
+      out.title = t('t.dexWithdraw', { amt: a.amount > 0n ? f.amt(a.amount, a.token) : f.sym(a.token), dex: contractName(a.counterparty) });
       main.push(tokenLine(a.token, f));
       break;
-    }
     case 'wrap':
-      out.title = `Обернул ${f.amt(a.amount, NEAR_ID)} в wNEAR`;
+      out.title = t('t.wrap', f.amt(a.amount, NEAR_ID));
       break;
     case 'unwrap':
-      out.title = `Развернул ${f.amt(a.amount, WNEAR)} в NEAR`;
+      out.title = t('t.unwrap', f.amt(a.amount, WNEAR));
       break;
     case 'payout': {
       const token = ctx.launchToken ? ctx.launchToken(a.launchId) : null;
       if (token) out.icon = { token };
       const parts = deltaParts(a, f).filter((p) => p.amount > 0n);
       const got = parts.map((p) => p.text).join(', ') || '0';
-      out.title = `Выплата холдерам${token ? ' ' + f.sym(token) : ''}: ${got}`;
-      sub.push(`Nearly · запуск #${a.launchId}`);
-      if (parts[0]) main.push({ label: 'Получено', value: parts.map((p) => p.text).join(', '), title: parts.map((p) => p.title).join(', '), note: a.nearDelta > 0n ? f.usd(a.nearDelta) : '' });
+      out.title = t('t.payout', { sym: token ? f.sym(token) : '', got });
+      sub.push(t('launchSub', a.launchId));
+      if (parts[0]) main.push({ label: t('l.got'), value: parts.map((p) => p.text).join(', '), title: parts.map((p) => p.title).join(', '), note: a.nearDelta > 0n ? f.usd(a.nearDelta) : '' });
       const unit = a.nearDelta > 0n ? NEAR_ID : parts[0]?.token;
       if (unit && a.totalPaid > 0n) {
-        main.push({ label: 'Всего в выплате', value: f.amt(a.totalPaid, unit), note: `${a.recipients} ${plural(a.recipients, ['получатель', 'получателя', 'получателей'])}` });
-        if (a.share > 0n) main.push({ label: 'Доля кошелька', value: fmtPct((f.num(a.share, unit) / f.num(a.totalPaid, unit)) * 100, { sign: false }) });
+        main.push({ label: t('l.totalPaid'), value: f.amt(a.totalPaid, unit), note: `${a.recipients} ${tp('recipientWord', a.recipients)}` });
+        if (a.share > 0n) main.push({ label: t('l.share'), value: fmtPct((f.num(a.share, unit) / f.num(a.totalPaid, unit)) * 100, { sign: false }) });
       }
-      if (token) main.push(tokenLine(token, f, 'Токен'));
+      if (token) main.push(tokenLine(token, f));
       out.tone = 'buy';
       out.csv = { token: token || '', in: parts.map((p) => p.title).join('; ') };
       break;
@@ -293,14 +288,14 @@ export function describe(a, ctx) {
     case 'claim': {
       const token = a.claimed?.token || (ctx.launchToken ? ctx.launchToken(a.launchId) : null);
       if (token) out.icon = { token };
-      out.title = `Запустил сбор комиссий пула${token ? ' ' + f.sym(token) : ''}`;
-      sub.push(`Nearly · запуск #${a.launchId}`);
+      out.title = t('t.claim', token ? f.sym(token) : '');
+      sub.push(t('launchSub', a.launchId));
       const c = a.claimed;
       if (c) {
         const items = [];
         if (big0(c.fee_near)) items.push(f.amt(BigInt(c.fee_near), NEAR_ID));
         if (big0(c.fee_token) && token) items.push(f.amt(BigInt(c.fee_token), token));
-        main.push({ label: 'Собрано', value: items.length ? items.join(' + ') : 'новых комиссий не было' });
+        main.push({ label: t('l.collected'), value: items.length ? items.join(' + ') : t('noFees') });
       }
       if (token) main.push(tokenLine(token, f));
       break;
@@ -310,72 +305,71 @@ export function describe(a, ctx) {
       if (isToken) out.icon = { token: a.contract };
       const target = isToken ? f.sym(a.contract) : contractName(a.contract);
       out.title = a.forAccount && a.forAccount !== a.account
-        ? `Оплатил регистрацию ${shortAccount(a.forAccount)} в ${target}`
-        : `Зарегистрировался в ${isToken ? 'токене ' : ''}${target}`;
-      sub.push(`storage deposit ${f.amt(a.amount, NEAR_ID)}`);
-      if (isToken && tokenFamily(a.contract)) sub.push('обычно это подготовка к покупке');
+        ? t('t.storageFor', { who: shortAccount(a.forAccount), target })
+        : t('t.storageSelf', { target, isToken });
+      sub.push(t('storageDeposit', f.amt(a.amount, NEAR_ID)));
+      if (isToken && tokenFamily(a.contract)) sub.push(t('prepBuy'));
       if (isToken) main.push(tokenLine(a.contract, f));
       break;
     }
-    case 'register': {
-      out.title = `Зарегистрировал ${a.registered.map((t) => f.sym(t)).join(', ')} во внутреннем балансе ${contractName(a.contract)}`;
+    case 'register':
+      out.title = t('t.register', { syms: a.registered.map((x) => f.sym(x)).join(', '), dex: contractName(a.contract) });
       if (a.registered[0]) out.icon = { token: a.registered[0] };
-      a.registered.forEach((t) => main.push(tokenLine(t, f)));
+      a.registered.forEach((x) => main.push(tokenLine(x, f)));
       break;
-    }
     case 'stake':
-      out.title = `Застейкал ${f.amt(a.amount, NEAR_ID)} у валидатора ${a.pool}`;
+      out.title = t('t.stake', { amt: f.amt(a.amount, NEAR_ID), pool: a.pool });
       break;
     case 'unstake':
-      out.title = a.amount > 0n ? `Запросил анстейк ${f.amt(a.amount, NEAR_ID)} у ${a.pool}` : `Запросил анстейк всего у ${a.pool}`;
+      out.title = t('t.unstake', { amt: a.amount > 0n ? f.amt(a.amount, NEAR_ID) : '', pool: a.pool });
       break;
     case 'withdraw_stake':
-      out.title = a.amount > 0n ? `Вывел ${f.amt(a.amount, NEAR_ID)} из стейкинга (${a.pool})` : `Вывел средства из стейкинга (${a.pool})`;
+      out.title = t('t.withdrawStake', { amt: a.amount > 0n ? f.amt(a.amount, NEAR_ID) : '', pool: a.pool });
       break;
     case 'key_add': {
       out.tone = 'warn';
       const p = a.key.permission;
       const fc = p && typeof p === 'object' ? p.FunctionCall : null;
-      out.title = fc ? `Добавил ключ доступа для ${fc.receiver_id}` : 'Добавил ключ с ПОЛНЫМ доступом к кошельку';
-      main.push({ label: 'Ключ', value: a.key.publicKey, mono: true, copy: a.key.publicKey });
-      main.push({ label: 'Права', value: fc ? `вызовы ${fc.receiver_id}${fc.method_names?.length ? ' (' + fc.method_names.join(', ') + ')' : ''}` : 'полный доступ' });
+      out.title = fc ? t('t.keyAddFc', fc.receiver_id) : t('t.keyAddFull');
+      main.push({ label: t('l.key'), value: a.key.publicKey, mono: true, copy: a.key.publicKey });
+      main.push({ label: t('l.rights'), value: fc ? t('rightsFc', { r: fc.receiver_id, m: fc.method_names?.length ? ' (' + fc.method_names.join(', ') + ')' : '' }) : t('fullAccess') });
       break;
     }
     case 'key_delete':
       out.tone = 'warn';
-      out.title = 'Удалил ключ доступа';
-      main.push({ label: 'Ключ', value: a.key.publicKey, mono: true, copy: a.key.publicKey });
+      out.title = t('t.keyDelete');
+      main.push({ label: t('l.key'), value: a.key.publicKey, mono: true, copy: a.key.publicKey });
       break;
     case 'deploy':
       out.tone = 'warn';
-      out.title = 'Задеплоил смарт-контракт на кошелёк';
+      out.title = t('t.deploy');
       break;
     case 'account_created':
-      out.title = 'Аккаунт создан';
-      sub.push(`через ${contractName(a.via)}${contractName(a.via) !== a.via ? ` (${a.via})` : ''}`);
+      out.title = t('t.accountCreated');
+      sub.push(t('via', `${contractName(a.via)}${contractName(a.via) !== a.via ? ` (${a.via})` : ''}`));
       break;
     case 'account_deleted':
       out.tone = 'warn';
-      out.title = `Удалил аккаунт, остаток ушёл на ${shortAccount(a.beneficiary)}`;
+      out.title = t('t.accountDeleted', shortAccount(a.beneficiary));
       break;
     case 'order':
     case 'liquidity': {
       const names = [...new Set(a.dclEvents.map((e) => e.event))].join(', ');
-      out.title = a.kind === 'order' ? `Лимитный ордер на Rhea DCL (${names})` : `Изменил ликвидность на Rhea DCL (${names})`;
+      out.title = t(a.kind === 'order' ? 't.order' : 't.liquidity', names);
       const pools = [...new Set(a.dclEvents.flatMap((e) => e.data.map((d) => d.pool_id)).filter(Boolean))];
-      pools.forEach((p) => main.push({ label: 'Пул', value: p, mono: true }));
+      pools.forEach((p) => main.push({ label: t('l.pool'), value: p, mono: true }));
       break;
     }
     case 'contract_call': {
-      const methods = [...new Set(a.methods)].join(', ') || 'действия';
-      out.title = `Вызвал ${methods} в ${contractName(a.contract)}`;
+      const methods = [...new Set(a.methods)].join(', ') || t('actions');
+      out.title = t('t.call', { methods, contract: contractName(a.contract) });
       if (contractName(a.contract) !== a.contract) sub.push(a.contract);
       break;
     }
     case 'mention':
     default: {
       const m = [...new Set(a.calls.filter((c) => c.method).map((c) => c.method))].slice(0, 3).join(', ');
-      out.title = `Упомянут в транзакции ${shortAccount(a.signer)} → ${shortAccount(a.receiver)}`;
+      out.title = t('t.mention', { from: shortAccount(a.signer), to: shortAccount(a.receiver) });
       if (m) sub.push(m);
     }
   }
@@ -383,34 +377,34 @@ export function describe(a, ctx) {
   // Balance changes are shown for every non-trade post (trades already list them).
   const deltas = deltaParts(a, f);
   if (deltas.length && !['trade', 'payout', 'transfer_in', 'transfer_out', 'ft_in', 'ft_out'].includes(a.kind)) {
-    main.push({ label: 'Баланс', value: deltas.map((p) => p.text).join(' · '), title: deltas.map((p) => p.title).join('\n') });
+    main.push({ label: t('l.balance'), value: deltas.map((p) => p.text).join(' · '), title: deltas.map((p) => p.title).join('\n') });
   } else if (deltas.length) {
-    out.details.push({ label: 'Баланс', value: deltas.map((p) => p.text).join(' · '), title: deltas.map((p) => p.title).join('\n') });
+    out.details.push({ label: t('l.balance'), value: deltas.map((p) => p.text).join(' · '), title: deltas.map((p) => p.title).join('\n') });
   }
   if (a.nfts.length) out.details.push({ label: 'NFT', value: a.nfts.map((n) => `${n.dir === 'in' ? '+' : '−'} ${n.contract} #${n.ids.join(', #')}`).join('\n') });
 
   main.push(txLine(a));
 
-  if (a.relayer) out.details.push(accountLine('Релеер', a.relayer));
-  if (!a.isSigner) out.details.push(accountLine('Подписант', a.signer));
-  out.details.push({ label: 'Блок', value: a.blockHeight != null ? a.blockHeight.toLocaleString('ru-RU') : '—' });
-  if (a.isSigner && !a.relayer) out.details.push({ label: 'Комиссия сети', value: f.amt(a.fee, NEAR_ID), title: f.full(a.fee, NEAR_ID) });
+  if (a.relayer) out.details.push(accountLine(t('l.relayer'), a.relayer));
+  if (!a.isSigner) out.details.push(accountLine(t('l.signer'), a.signer));
+  out.details.push({ label: t('l.block'), value: a.blockHeight != null ? a.blockHeight.toLocaleString(getLocale()) : '—' });
+  if (a.isSigner && !a.relayer) out.details.push({ label: t('l.fee'), value: f.amt(a.fee, NEAR_ID), title: f.full(a.fee, NEAR_ID) });
   if (a.status !== 'success') {
-    out.details.push({ label: 'Статус', value: a.status === 'failed' ? 'транзакция не удалась' : 'часть вызовов завершилась ошибкой' });
-    a.failures.forEach((x) => out.details.push({ label: 'Ошибка', value: `${x.contract}: ${x.message}`, mono: true }));
+    out.details.push({ label: t('l.status'), value: t(a.status === 'failed' ? 'txFailed' : 'partialFail') });
+    a.failures.forEach((x) => out.details.push({ label: t('l.error'), value: `${x.contract}: ${x.message}`, mono: true }));
   }
   const calls = a.calls.filter((c) => c.kind === 'FunctionCall' || c.kind === 'Transfer');
   if (calls.length) {
     out.details.push({
-      label: 'Вызовы',
+      label: t('l.calls'),
       mono: true,
-      value: calls.slice(0, 40).map((c) => `${c.status === 'failure' ? '✕ ' : ''}${shortAccount(c.from)} → ${shortAccount(c.to)}: ${c.kind === 'Transfer' ? 'transfer' : c.method}${c.deposit > 1n ? ` (${fmtNum(toNumber(c.deposit, 24))} NEAR)` : ''}`).join('\n') + (calls.length > 40 ? `\n… ещё ${calls.length - 40}` : ''),
+      value: calls.slice(0, 40).map((c) => `${c.status === 'failure' ? '✕ ' : ''}${shortAccount(c.from)} → ${shortAccount(c.to)}: ${c.kind === 'Transfer' ? 'transfer' : c.method}${c.deposit > 1n ? ` (${fmtNum(toNumber(c.deposit, 24))} NEAR)` : ''}`).join('\n') + (calls.length > 40 ? `\n${t('moreCalls', calls.length - 40)}` : ''),
     });
   }
   const evs = a.events.map((e) => `${e.standard || '?'}:${e.event}`);
-  if (evs.length) out.details.push({ label: 'События', value: [...new Set(evs)].join(', '), mono: true });
+  if (evs.length) out.details.push({ label: t('l.events'), value: [...new Set(evs)].join(', '), mono: true });
 
-  if (a.pending && a.kind !== 'trade_pending') out.tags.push('исполняется');
+  if (a.pending && a.kind !== 'trade_pending') out.tags.push(t('tag.executing'));
   out.subtitle = sub.filter(Boolean).join(' · ');
   out.csv = { kind: a.kind, title: out.title, hash: a.hash, time: new Date(a.timestampMs).toISOString(), nearDelta: toDecimalString(a.nearDelta, 24), ...out.csv };
   return out;
@@ -426,9 +420,9 @@ function big0(v) {
 
 export function humanError(msg) {
   const m = String(msg || '');
-  if (/slippage|E204|E68|min_amount|insufficient output/i.test(m)) return 'проскальзывание: цена ушла сильнее допустимого';
-  if (/E101|insufficient balance|not enough balance|doesn't have enough balance/i.test(m)) return 'недостаточно средств';
-  if (/not registered|E10\b|storage/i.test(m)) return 'аккаунт не зарегистрирован в контракте';
-  if (/Exceeded the prepaid gas|GasExceeded/i.test(m)) return 'не хватило газа';
+  if (/slippage|E204|E68|min_amount|insufficient output/i.test(m)) return t('err.slippage');
+  if (/E101|insufficient balance|not enough balance|doesn't have enough balance/i.test(m)) return t('err.funds');
+  if (/not registered|E10\b|storage/i.test(m)) return t('err.notRegistered');
+  if (/Exceeded the prepaid gas|GasExceeded/i.test(m)) return t('err.gas');
   return m.replace(/^Smart contract panicked:\s*/, '').slice(0, 200);
 }

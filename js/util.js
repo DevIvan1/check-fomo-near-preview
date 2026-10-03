@@ -1,4 +1,6 @@
-// Pure helpers: encoding, BigInt math, number and time formatting.
+// Pure helpers: encoding, BigInt math, number and time formatting (locale follows the UI language).
+
+import { t, getLocale } from './i18n.js';
 
 export function b64ToText(b64) {
   if (typeof b64 !== 'string') return null;
@@ -57,18 +59,19 @@ export function toNumber(amount, decimals) {
   return Number(toDecimalString(amount, decimals));
 }
 
-const LOCALE = 'ru-RU';
 const cache = new Map();
 function nf(key, opts) {
-  let f = cache.get(key);
+  const locale = getLocale();
+  const k = `${locale}|${key}`;
+  let f = cache.get(k);
   if (!f) {
-    f = new Intl.NumberFormat(LOCALE, opts);
-    cache.set(key, f);
+    f = new Intl.NumberFormat(locale, opts);
+    cache.set(k, f);
   }
   return f;
 }
 
-// Human formatting of a plain number. Large values become compact ("7,7 млн").
+// Human formatting of a plain number. Large values become compact ("7.7M" / "7,7 млн").
 export function fmtNum(v, { compact = true, sign = false } = {}) {
   if (v === null || v === undefined || Number.isNaN(v)) return '—';
   const a = Math.abs(v);
@@ -101,16 +104,6 @@ export function fmtUsd(v) {
   return (v < 0 ? '−$' : '$') + s;
 }
 
-// Russian plural: plural(5, ['сделка', 'сделки', 'сделок']) -> 'сделок'
-export function plural(n, [one, few, many]) {
-  const a = Math.abs(n) % 100;
-  const b = a % 10;
-  if (a > 10 && a < 20) return many;
-  if (b === 1) return one;
-  if (b >= 2 && b <= 4) return few;
-  return many;
-}
-
 export function fmtPct(v, { sign = true } = {}) {
   if (v === null || v === undefined || !Number.isFinite(v)) return '—';
   const digits = Math.abs(v) < 10 ? 1 : 0;
@@ -135,23 +128,22 @@ export function shortAccount(id) {
 
 export function relTime(ms, now = Date.now()) {
   const s = Math.max(0, Math.round((now - ms) / 1000));
-  if (s < 5) return 'только что';
-  if (s < 60) return `${s} с назад`;
+  if (s < 5) return t('justNow');
+  if (s < 60) return t('secAgo', s);
   const m = Math.floor(s / 60);
-  if (m < 60) return `${m} мин назад`;
+  if (m < 60) return t('minAgo', m);
   const h = Math.floor(m / 60);
-  if (h < 24) return `${h} ч назад`;
-  const d = Math.floor(h / 24);
-  return `${d} дн назад`;
+  if (h < 24) return t('hAgo', h);
+  return t('dAgo', Math.floor(h / 24));
 }
 
 export function fmtTime(ms) {
-  return new Date(ms).toLocaleTimeString(LOCALE, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  return new Date(ms).toLocaleTimeString(getLocale(), { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 }
 
 export function fmtDateTime(ms) {
-  return new Date(ms).toLocaleString(LOCALE, {
-    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit',
+  return new Date(ms).toLocaleString(getLocale(), {
+    day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
   });
 }
 
@@ -160,9 +152,9 @@ export function dayLabel(ms, now = Date.now()) {
   const today = new Date(now);
   const startOf = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
   const diff = Math.round((startOf(today) - startOf(d)) / 86400000);
-  if (diff === 0) return 'Сегодня';
-  if (diff === 1) return 'Вчера';
-  return d.toLocaleDateString(LOCALE, { day: 'numeric', month: 'long', year: d.getFullYear() === today.getFullYear() ? undefined : 'numeric' });
+  if (diff === 0) return t('today');
+  if (diff === 1) return t('yesterday');
+  return d.toLocaleDateString(getLocale(), { day: 'numeric', month: 'long', year: d.getFullYear() === today.getFullYear() ? undefined : 'numeric' });
 }
 
 export function sleep(ms) {

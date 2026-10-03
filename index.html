@@ -1,59 +1,60 @@
 <!doctype html>
-<html lang="ru">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="referrer" content="no-referrer">
   <title>NEAR Wallet Monitor</title>
-  <meta name="description" content="Живая лента действий NEAR-кошелька: покупки, продажи, переводы, выплаты — с хешами транзакций и звуковыми оповещениями.">
+  <meta name="description" content="Live activity feed for any NEAR wallet: buys, sells, transfers and payouts with transaction hashes and sound alerts.">
   <meta name="color-scheme" content="light dark">
   <meta name="author" content="@Checker1crypto (https://x.com/Checker1crypto)">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; worker-src 'self'; style-src 'self'; img-src 'self' data: https:; connect-src https://tx.main.fastnear.com https://api.fastnear.com https://rpc.mainnet.fastnear.com https://free.rpc.fastnear.com https://rpc.mainnet.near.org https://nearly.trade https://prices.intear.tech https://api.ref.finance; base-uri 'none'; form-action 'self'; object-src 'none'">
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
-  <script src="js/theme.js?v=4"></script>
-  <link rel="stylesheet" href="css/style.css?v=4">
+  <script src="js/theme.js?v=5"></script>
+  <link rel="stylesheet" href="css/style.css?v=5">
 </head>
 <body>
   <header class="topbar">
     <div class="topbar-inner">
-      <a class="brand" id="homeLink" href="./" title="На главную">
+      <a class="brand" id="homeLink" href="./" title="Home" data-i18n-title="home">
         <svg class="mark" viewBox="0 0 24 24" aria-hidden="true"><rect class="mark-bg" x="1" y="1" width="22" height="22" rx="6"/><path class="mark-line" d="M5 12.5h3l2.2-5 3.6 9.5 2.2-4.5H19"/></svg>
         <span class="brand-name">Wallet Monitor</span>
       </a>
       <form class="account-form" id="accountForm" autocomplete="off">
-        <label class="sr-only" for="accountInput">Аккаунт NEAR</label>
+        <label class="sr-only" for="accountInput" data-i18n="accountLabel">NEAR account</label>
         <input id="accountInput" class="account-input" spellcheck="false" placeholder="account.near">
-        <button type="submit" class="btn btn-ghost" title="Отслеживать этот аккаунт">Открыть</button>
+        <button type="submit" class="btn btn-ghost" title="Watch this account" data-i18n-title="watchAccount" data-i18n="open">Open</button>
       </form>
       <a class="top-credit" href="https://x.com/Checker1crypto" target="_blank" rel="noopener noreferrer">by @Checker1crypto</a>
       <div class="top-actions">
-        <button class="btn btn-icon" id="soundBtn" type="button" title="Звук оповещений" aria-pressed="true"></button>
-        <button class="btn btn-icon" id="notifyBtn" type="button" title="Уведомления на рабочий стол" aria-pressed="false"></button>
-        <button class="btn btn-icon" id="settingsBtn" type="button" title="Настройки" aria-haspopup="dialog"></button>
+        <button class="btn btn-icon" id="soundBtn" type="button" title="Alert sound" aria-pressed="true"></button>
+        <button class="btn btn-icon" id="notifyBtn" type="button" title="Desktop notifications" aria-pressed="false"></button>
+        <button class="btn btn-icon" id="settingsBtn" type="button" title="Settings" data-i18n-title="settings" aria-haspopup="dialog"></button>
       </div>
     </div>
   </header>
 
   <div class="audio-hint" id="audioHint" hidden>
-    Браузер блокирует звук до первого действия на странице. <button class="link-btn" id="audioHintBtn" type="button">Включить звук</button>
+    <span data-i18n="audioHint">Your browser blocks sound until you interact with the page.</span>
+    <button class="link-btn" id="audioHintBtn" type="button" data-i18n="enableSound">Enable sound</button>
   </div>
 
-  <section class="landing" id="landing" aria-label="Поиск кошелька" hidden>
+  <section class="landing" id="landing" aria-label="Wallet search" data-i18n-aria="walletSearch" hidden>
     <form class="landing-form" id="landingForm" autocomplete="off" role="search">
-      <label class="sr-only" for="landingInput">Адрес NEAR-кошелька</label>
+      <label class="sr-only" for="landingInput" data-i18n="walletAddress">NEAR wallet address</label>
       <svg class="landing-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
-      <input id="landingInput" class="landing-input" spellcheck="false" autocapitalize="off" placeholder="Адрес кошелька">
-      <button class="btn" type="submit">Открыть</button>
+      <input id="landingInput" class="landing-input" spellcheck="false" autocapitalize="off" placeholder="Wallet address" data-i18n-placeholder="walletPlaceholder">
+      <button class="btn" type="submit" data-i18n="open">Open</button>
     </form>
-    <p class="landing-credit">создано by <a href="https://x.com/Checker1crypto" target="_blank" rel="noopener noreferrer">@Checker1crypto</a></p>
+    <p class="landing-credit"><span data-i18n="createdBy">created by</span> <a href="https://x.com/Checker1crypto" target="_blank" rel="noopener noreferrer">@Checker1crypto</a></p>
   </section>
 
   <main class="layout" id="app" hidden>
-    <section class="account-card" id="accountCard" aria-label="Аккаунт">
+    <section class="account-card" id="accountCard" aria-label="Account" data-i18n-aria="account">
       <div class="account-head">
         <div>
           <div class="account-id" id="accountId">—</div>
-          <div class="live" id="liveStatus"><span class="live-dot"></span><span class="live-text">подключение…</span></div>
+          <div class="live" id="liveStatus"><span class="live-dot"></span><span class="live-text" data-i18n="connecting">connecting…</span></div>
         </div>
         <div class="account-balance">
           <div class="balance-near" id="balanceNear">—</div>
@@ -63,47 +64,47 @@
       <div class="account-links" id="accountLinks"></div>
     </section>
 
-    <section class="feed-col" aria-label="Лента действий">
+    <section class="feed-col" aria-label="Activity feed" data-i18n-aria="activityFeed">
       <div class="feed-toolbar">
         <div class="tabs" role="tablist" id="tabs">
-          <button role="tab" data-filter="all" aria-selected="true">Все <span class="count" data-count="all"></span></button>
-          <button role="tab" data-filter="trades" aria-selected="false">Сделки <span class="count" data-count="trades"></span></button>
-          <button role="tab" data-filter="transfers" aria-selected="false">Переводы <span class="count" data-count="transfers"></span></button>
-          <button role="tab" data-filter="payouts" aria-selected="false">Выплаты <span class="count" data-count="payouts"></span></button>
-          <button role="tab" data-filter="other" aria-selected="false">Прочее <span class="count" data-count="other"></span></button>
+          <button role="tab" data-filter="all" aria-selected="true"><span data-i18n="tab.all">All</span> <span class="count" data-count="all"></span></button>
+          <button role="tab" data-filter="trades" aria-selected="false"><span data-i18n="tab.trades">Trades</span> <span class="count" data-count="trades"></span></button>
+          <button role="tab" data-filter="transfers" aria-selected="false"><span data-i18n="tab.transfers">Transfers</span> <span class="count" data-count="transfers"></span></button>
+          <button role="tab" data-filter="payouts" aria-selected="false"><span data-i18n="tab.payouts">Payouts</span> <span class="count" data-count="payouts"></span></button>
+          <button role="tab" data-filter="other" aria-selected="false"><span data-i18n="tab.other">Other</span> <span class="count" data-count="other"></span></button>
         </div>
         <div class="toolbar-row">
-          <input id="searchInput" class="search" type="search" placeholder="Поиск: токен, хеш, аккаунт" spellcheck="false">
-          <button class="btn btn-ghost" id="exportBtn" type="button" title="Скачать ленту в CSV">CSV</button>
+          <input id="searchInput" class="search" type="search" placeholder="Search: token, hash, account" data-i18n-placeholder="searchPlaceholder" spellcheck="false">
+          <button class="btn btn-ghost" id="exportBtn" type="button" title="Download the feed as CSV" data-i18n-title="csvTitle">CSV</button>
         </div>
       </div>
 
       <div class="new-banner" id="newBanner" hidden>
-        <button type="button" id="newBannerBtn">Новые события: <span id="newCount">0</span> — показать</button>
+        <button type="button" id="newBannerBtn"><span data-i18n="newEvents">New events:</span> <span id="newCount">0</span> <span data-i18n="showNew">— show</span></button>
       </div>
 
       <ol class="feed" id="feed" aria-live="polite"></ol>
       <div class="feed-footer">
-        <div class="feed-state muted" id="feedState">Загрузка истории…</div>
-        <button class="btn btn-ghost" id="moreBtn" type="button" hidden>Загрузить более ранние</button>
+        <div class="feed-state muted" id="feedState" data-i18n="loadingHistory">Loading history…</div>
+        <button class="btn btn-ghost" id="moreBtn" type="button" data-i18n="loadEarlier" hidden>Load earlier</button>
       </div>
     </section>
 
-    <aside class="side-col" aria-label="Сводка">
+    <aside class="side-col" aria-label="Summary" data-i18n-aria="summary">
       <details class="side-wrap" id="sideWrap" open>
-        <summary class="side-summary">Позиции, кошелёк, статистика</summary>
+        <summary class="side-summary" data-i18n="sidePanels">Positions, wallet, stats</summary>
         <div class="side-inner">
           <section class="panel">
-            <h2 class="panel-title">Позиции и PnL</h2>
-            <div id="positions" class="positions"><div class="muted small">Нет сделок</div></div>
-            <p class="panel-note muted small">Метод средней цены. Текущая стоимость — по цене пула сейчас; выплаты холдерам учтены в результате.</p>
+            <h2 class="panel-title" data-i18n="positionsTitle">Positions &amp; PnL</h2>
+            <div id="positions" class="positions"><div class="muted small" data-i18n="noTrades">No trades yet</div></div>
+            <p class="panel-note muted small" data-i18n="positionsNote">Average-cost method. Current value uses the pool price now; holder payouts are included in the result.</p>
           </section>
           <section class="panel">
-            <h2 class="panel-title">Кошелёк</h2>
+            <h2 class="panel-title" data-i18n="walletTitle">Wallet</h2>
             <div id="holdings" class="holdings"><div class="muted small">—</div></div>
           </section>
           <section class="panel">
-            <h2 class="panel-title">Статистика</h2>
+            <h2 class="panel-title" data-i18n="statsTitle">Stats</h2>
             <dl id="stats" class="stats"></dl>
           </section>
         </div>
@@ -113,50 +114,57 @@
 
   <dialog class="dialog" id="settingsDialog" aria-labelledby="settingsTitle">
     <form method="dialog" class="dialog-body" id="settingsForm">
-      <h2 id="settingsTitle" class="dialog-title">Настройки</h2>
+      <h2 id="settingsTitle" class="dialog-title" data-i18n="settings">Settings</h2>
       <label class="field">
-        <span>Тема</span>
+        <span data-i18n="language">Language</span>
+        <select name="lang">
+          <option value="en">English</option>
+          <option value="ru">Русский</option>
+        </select>
+      </label>
+      <label class="field">
+        <span data-i18n="theme">Theme</span>
         <select name="theme">
-          <option value="auto">Как в системе</option>
-          <option value="light">Светлая</option>
-          <option value="dark">Тёмная</option>
+          <option value="auto" data-i18n="themeAuto">System</option>
+          <option value="light" data-i18n="themeLight">Light</option>
+          <option value="dark" data-i18n="themeDark">Dark</option>
         </select>
       </label>
       <label class="field row">
-        <input type="checkbox" name="sound"> <span>Звук при новом событии</span>
+        <input type="checkbox" name="sound"> <span data-i18n="soundOnEvent">Sound on new events</span>
       </label>
       <label class="field">
-        <span>Громкость</span>
+        <span data-i18n="volume">Volume</span>
         <input type="range" name="volume" min="0" max="1" step="0.05">
       </label>
       <label class="field">
-        <span>Оповещать о</span>
+        <span data-i18n="alertOn">Alert on</span>
         <select name="alertLevel">
-          <option value="all">всех событиях</option>
-          <option value="normal">важных и обычных (без выплат и упоминаний)</option>
-          <option value="trades">только сделках</option>
+          <option value="all" data-i18n="alertAll">all events</option>
+          <option value="normal" data-i18n="alertNormal">important and regular (no payouts or mentions)</option>
+          <option value="trades" data-i18n="alertTrades">trades only</option>
         </select>
       </label>
       <label class="field">
-        <span>Минимальный размер сделки для оповещения, NEAR</span>
+        <span data-i18n="alertMin">Minimum trade size to alert, NEAR</span>
         <input type="number" name="alertMinNear" min="0" step="any" inputmode="decimal">
       </label>
       <label class="field row">
-        <input type="checkbox" name="notify"> <span>Уведомления на рабочий стол</span>
+        <input type="checkbox" name="notify"> <span data-i18n="desktopNotify">Desktop notifications</span>
       </label>
       <label class="field">
-        <span>Проверять каждые, секунд</span>
+        <span data-i18n="pollEvery">Check every, seconds</span>
         <input type="number" name="pollSec" min="2" max="60" step="1">
       </label>
       <label class="field row">
-        <input type="checkbox" name="showPayouts"> <span>Показывать выплаты холдерам в ленте «Все»</span>
+        <input type="checkbox" name="showPayouts"> <span data-i18n="showPayouts">Show holder payouts in “All”</span>
       </label>
       <label class="field row">
-        <input type="checkbox" name="showMentions"> <span>Показывать упоминания без движения средств</span>
+        <input type="checkbox" name="showMentions"> <span data-i18n="showMentions">Show mentions without fund movements</span>
       </label>
       <div class="dialog-actions">
-        <button type="button" class="btn btn-ghost" id="testSoundBtn">Проверить звук</button>
-        <button type="submit" class="btn" value="save">Готово</button>
+        <button type="button" class="btn btn-ghost" id="testSoundBtn" data-i18n="testSound">Test sound</button>
+        <button type="submit" class="btn" value="save" data-i18n="done">Done</button>
       </div>
     </form>
   </dialog>
@@ -164,10 +172,10 @@
   <div class="toast" id="toast" role="status" hidden></div>
 
   <footer class="footer small">
-    <div class="credit">создано by <a href="https://x.com/Checker1crypto" target="_blank" rel="noopener noreferrer">@Checker1crypto</a></div>
-    <div class="sources muted">Данные: FastNEAR (транзакции, балансы), NEAR RPC, Nearly API, Intear / Rhea (цены). Всё считается в браузере, сервер не нужен.</div>
+    <div class="credit"><span data-i18n="createdBy">created by</span> <a href="https://x.com/Checker1crypto" target="_blank" rel="noopener noreferrer">@Checker1crypto</a></div>
+    <div class="sources muted" data-i18n="sources">Data: FastNEAR (transactions, balances), NEAR RPC, Nearly API, Intear / Rhea (prices). Everything runs in your browser, no server.</div>
   </footer>
 
-  <script type="module" src="js/app.js?v=4"></script>
+  <script type="module" src="js/app.js?v=5"></script>
 </body>
 </html>
