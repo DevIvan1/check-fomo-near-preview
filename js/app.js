@@ -1,18 +1,18 @@
 // UI + live polling loop.
 
-import { DEFAULT_SETTINGS, HISTORY_PAGE, POLL_PAGE, NEAR_ID, WNEAR, explorer } from './config.js';
-import { normalizeAccount, shouldAlert, soundKind } from './rules.js';
-import * as api from './api.js';
-import * as tokens from './tokens.js';
-import { analyzeTx } from './parser.js';
-import { describe, tokenLinks } from './describe.js';
-import { computePositions, positionRows, accountStats, periodSummary } from './positions.js';
-import * as alerts from './alerts.js';
+import { DEFAULT_SETTINGS, HISTORY_PAGE, POLL_PAGE, NEAR_ID, WNEAR, explorer } from './config.js?v=a142e7bf';
+import { normalizeAccount, shouldAlert, soundKind } from './rules.js?v=a142e7bf';
+import * as api from './api.js?v=a142e7bf';
+import * as tokens from './tokens.js?v=a142e7bf';
+import { analyzeTx } from './parser.js?v=a142e7bf';
+import { describe, tokenLinks } from './describe.js?v=a142e7bf';
+import { computePositions, positionRows, accountStats, periodSummary } from './positions.js?v=a142e7bf';
+import * as alerts from './alerts.js?v=a142e7bf';
 import {
   fmtNum, fmtUsd, fmtPct, relTime, fmtTime, fmtDateTime, dayLabel, toNumber, shortAccount,
   storageGet, storageSet, toDecimalString,
-} from './util.js';
-import { t, tp, setLang, getLocale, applyStatic } from './i18n.js';
+} from './util.js?v=a142e7bf';
+import { t, tp, setLang, getLocale, applyStatic } from './i18n.js?v=a142e7bf';
 
 const $ = (sel) => document.querySelector(sel);
 const SETTINGS_KEY = 'nwm.settings.v1';
@@ -25,6 +25,39 @@ const SAFETY_POLL_MS = 15000;
 const BURST_POLL_MS = 2500;
 const BURST_WINDOW_MS = 9000;
 const MAX_PENDING_TRIES = 15;
+const BACKUP_POLL_MS = 10000; // NearBlocks allows fewer calls; poll it more gently
+let txApiDownUntil = 0; // while set, history comes from the backup sources
+
+// Account history page: FastNEAR first, NearBlocks when FastNEAR fails (no pagination there).
+async function listTxs(opts) {
+  if (Date.now() >= txApiDownUntil) {
+    try {
+      const r = await api.accountTxs(state.account, opts);
+      state.source = 'fastnear';
+      return r;
+    } catch (e) {
+      txApiDownUntil = Date.now() + 60000;
+      if (opts.resumeToken) throw e;
+    }
+  }
+  if (opts.resumeToken) throw new Error('backup source has no pagination');
+  const r = await api.accountTxsBackup(state.account, { limit: opts.limit });
+  state.source = 'backup';
+  return r;
+}
+
+// Full transactions for history rows: FastNEAR first, RPC tx status when FastNEAR fails.
+async function fetchRaw(rows) {
+  if (Date.now() >= txApiDownUntil) {
+    try {
+      return await api.transactions(rows.map((r) => r.transaction_hash));
+    } catch {
+      txApiDownUntil = Date.now() + 60000;
+      state.source = 'backup';
+    }
+  }
+  return api.transactionsBackup(rows, state.account);
+}
 
 const ICONS = {
   soundOn: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>',
@@ -333,6 +366,7 @@ function updateFooter() {
   more.disabled = state.loadingHistory;
   if (!n && !state.loadingHistory) setFeedState(t(state.lastErr ? 'historyFailed' : 'noTxs'));
   else if (state.loadingHistory) setFeedState(t('loadingCount', { n, total }));
+  else if (state.source === 'backup' && !state.resumeToken) setFeedState(t('backupShown', { n, word: tp('txWord', n) }));
   else if (state.resumeToken) setFeedState(t('shownOf', { n, total: total ?? '?', word: tp('txWord', total ?? 0) }));
   else setFeedState(t('allHistory', { n, word: tp('txWord', n) }));
 }
@@ -342,7 +376,7 @@ async function loadHistory(gen, first) {
   state.loadingHistory = true;
   updateFooter();
   try {
-    const r = await api.accountTxs(state.account, { limit: HISTORY_PAGE, resumeToken: first ? undefined : state.resumeToken });
+    const r = await listTxs({ limit: HISTORY_PAGE, resumeToken: first ? undefined : state.resumeToken });
     if (gen !== state.generation) return;
     if (first && r.txs_count !== undefined) state.totalCount = r.txs_count;
     state.resumeToken = r.resume_token || null;
@@ -350,6 +384,7 @@ async function loadHistory(gen, first) {
     await ingest(rows, { live: false, gen });
     if (gen !== state.generation) return;
     state.historyLoaded = true;
+    state.historyFromBackup = state.source === 'backup';
     state.historyRetryMs = 5000;
     state.lastErr = null;
   } catch (e) {
@@ -411,13 +446,14 @@ function recompute() {
 
 async function ingest(rows, { live, gen }) {
   if (!rows.length) return [];
-  const raws = await api.transactions(rows.map((r) => r.transaction_hash));
+  const raws = await fetchRaw(rows);
   if (gen !== state.generation) return [];
   const byHash = new Map(raws.map((r) => [r.transaction?.hash, r]));
   const added = [];
   for (const row of rows) {
     const raw = byHash.get(row.transaction_hash);
     if (!raw || state.items.has(row.transaction_hash)) continue; // not served yet: the next poll retries it
+    const isLive = typeof live === 'function' ? live(row) : live;
     let a;
     try {
       a = analyzeTx(raw, state.account);
@@ -428,7 +464,7 @@ async function ingest(rows, { live, gen }) {
     const item = {
       hash: row.transaction_hash, a, d: null, el: null, sig: null,
       height: row.tx_block_height ?? a.blockHeight, index: row.tx_index ?? a.txIndex,
-      live, firstSeen: Date.now(), alerted: !live, pendingTries: 0, fresh: live,
+      live: isLive, firstSeen: Date.now(), alerted: !isLive, pendingTries: 0, fresh: isLive,
     };
     state.items.set(item.hash, item);
     added.push(item);
@@ -442,7 +478,7 @@ async function ingest(rows, { live, gen }) {
 }
 
 async function refreshPending(items, gen) {
-  const raws = await api.transactions(items.map((i) => i.hash));
+  const raws = await fetchRaw(items.map((i) => ({ transaction_hash: i.hash, tx_block_height: i.height, tx_block_timestamp: String(BigInt(i.a.timestampMs) * 1000000n) })));
   if (gen !== state.generation) return;
   const byHash = new Map(raws.map((r) => [r.transaction?.hash, r]));
   const changed = [];
@@ -471,17 +507,26 @@ async function poll() {
   const gen = state.generation;
   let failed = false;
   try {
-    const r = await api.accountTxs(state.account, { limit: POLL_PAGE });
+    const r = await listTxs({ limit: POLL_PAGE });
     if (gen !== state.generation) return;
     if (r.txs_count !== undefined && r.txs_count > (state.totalCount ?? 0)) state.totalCount = r.txs_count;
     const fresh = (r.account_txs || []).filter((t) => !state.items.has(t.transaction_hash));
     if (fresh.length) {
-      const added = await ingest(fresh, { live: true, gen });
+      // Rows far older than what we already show (e.g. filling a gap after the backup source)
+      // are history, not new events: no alerts for them.
+      const known = [...state.items.values()].map((i) => i.height || 0);
+      const liveCut = (known.length ? Math.max(...known) : 0) - 300; // ≈ 5 minutes of blocks
+      const added = await ingest(fresh, { live: (row) => !row.tx_block_height || row.tx_block_height > liveCut, gen });
       if (added.length) {
         onNewItems(added);
         state.burstUntil = Date.now() + BURST_WINDOW_MS; // follow-up receipts and token balances
         state.nextFullAt = Date.now() + 3000;
       }
+    }
+    if (state.historyFromBackup && state.source === 'fastnear') {
+      // FastNEAR is back: replace the short backup history with the full one (quietly).
+      state.historyFromBackup = false;
+      loadHistory(gen, true);
     }
     const pending = [...state.items.values()].filter((i) => i.a.pending && i.pendingTries < MAX_PENDING_TRIES);
     if (pending.length) await refreshPending(pending, gen);
@@ -501,7 +546,8 @@ async function poll() {
       const hasPending = [...state.items.values()].some((i) => i.a.pending && i.pendingTries < MAX_PENDING_TRIES);
       state.nextPollAt = now + (failed
         ? Math.min(60000, 3000 * 2 ** Math.min(state.errStreak, 5))
-        : now < state.burstUntil || hasPending ? BURST_POLL_MS : SAFETY_POLL_MS);
+        : state.source === 'backup' ? BACKUP_POLL_MS
+          : now < state.burstUntil || hasPending ? BURST_POLL_MS : SAFETY_POLL_MS);
       renderLive();
       updateFooter();
     }
@@ -705,7 +751,7 @@ function onTick() {
 
 function startTicker() {
   try {
-    const w = new Worker(new URL('./ticker.js', import.meta.url));
+    const w = new Worker(new URL('./ticker.js?v=a142e7bf', import.meta.url));
     w.onmessage = onTick;
     w.postMessage({ cmd: 'start', ms: 500 });
   } catch {
@@ -737,7 +783,8 @@ function renderLive() {
   }
   box.classList.add('ok');
   const ago = state.lastOkAt ? Math.max(0, Math.round((Date.now() - state.lastOkAt) / 1000)) : null;
-  text.textContent = t('live', { sec: state.settings.pollSec, ago, block: state.blockHeight ? state.blockHeight.toLocaleString(getLocale()) : '' });
+  text.textContent = t('live', { sec: state.settings.pollSec, ago, block: state.blockHeight ? state.blockHeight.toLocaleString(getLocale()) : '' })
+    + (state.source === 'backup' ? ` · ${t('backupSource')}` : '');
 }
 
 function renderHeader() {
@@ -1331,6 +1378,12 @@ function init() {
   bindUI();
   startTicker();
   route();
+  window.__nwmReady = true; // seen by boot.js: the app started
+  try {
+    sessionStorage.removeItem('nwm.bootRetry');
+  } catch {
+    /* storage blocked */
+  }
   if (debug) {
     // Test hook: forget the newest N events so the next poll re-detects them as live ones.
     window.__nwm = {

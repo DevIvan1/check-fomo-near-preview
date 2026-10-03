@@ -1,7 +1,8 @@
 // Network layer: FastNEAR tx API, NEAR RPC, FastNEAR balances, Nearly and price APIs.
 
-import { TX_API, FASTNEAR_API, RPC_URLS, RPC_FAST, NEARLY_API, INTEAR_PRICES, REF_PRICES, FASTNEAR_API_KEY } from './config.js';
-import { sleep, chunk } from './util.js';
+import { TX_API, FASTNEAR_API, RPC_URLS, RPC_FAST, RPC_ARCHIVAL, NEARBLOCKS_API, NEARLY_API, INTEAR_PRICES, REF_PRICES, FASTNEAR_API_KEY } from './config.js?v=a142e7bf';
+import { fromRpcTxStatus } from './parser.js?v=a142e7bf';
+import { sleep, chunk } from './util.js?v=a142e7bf';
 
 export class HttpError extends Error {
   constructor(status, url) {
@@ -122,6 +123,56 @@ export async function viewFunction(contract, method, args = {}, opts) {
   if (r.error) throw new Error(r.error);
   const text = new TextDecoder().decode(new Uint8Array(r.result));
   return JSON.parse(text);
+}
+
+// ---- Backup history: NearBlocks for the list, RPC tx status for the details ----
+
+export async function accountTxsBackup(accountId, { limit = 25 } = {}) {
+  const r = await fetchJson(`${NEARBLOCKS_API}/account/${encodeURIComponent(accountId)}/txns?per_page=${Math.min(25, limit)}`, { timeout: 12000, retries: 0 });
+  const rows = new Map();
+  for (const x of r.txns || []) {
+    const h = x.transaction_hash;
+    if (!h || rows.has(h)) continue;
+    rows.set(h, {
+      account_id: accountId,
+      transaction_hash: h,
+      tx_block_height: Number(x.block?.block_height ?? x.receipt_block?.block_height) || null,
+      tx_block_timestamp: String(x.block_timestamp ?? x.receipt_block?.block_timestamp ?? ''),
+      tx_index: 0,
+    });
+  }
+  return { account_txs: [...rows.values()] };
+}
+
+async function txStatus(hash, sender) {
+  const params = { tx_hash: hash, sender_account_id: sender, wait_until: 'NONE' };
+  try {
+    return await rpc('EXPERIMENTAL_tx_status', params, { spread: true });
+  } catch (e) {
+    // Regular nodes forget transactions after a few epochs; ask an archival node.
+    const r = await fetchJson(RPC_ARCHIVAL, { method: 'POST', body: { jsonrpc: '2.0', id: 'a', method: 'EXPERIMENTAL_tx_status', params }, timeout: 15000, retries: 0 });
+    if (r.error) throw new Error(r.error.data || r.error.message || 'tx status failed');
+    return r.result;
+  }
+}
+
+// rows: account history rows (hash + block height/timestamp); returns FastNEAR-shaped raw transactions.
+export async function transactionsBackup(rows, accountId, { concurrency = 3 } = {}) {
+  const out = [];
+  let i = 0;
+  const worker = async () => {
+    while (i < rows.length) {
+      const row = rows[i++];
+      try {
+        const res = await txStatus(row.transaction_hash, accountId);
+        out.push(fromRpcTxStatus(res, { height: row.tx_block_height, timestampNs: row.tx_block_timestamp }));
+      } catch {
+        /* skipped: picked up by a later poll */
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(concurrency, rows.length) }, worker));
+  return out;
 }
 
 export async function viewAccount(accountId, opts) {

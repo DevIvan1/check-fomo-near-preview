@@ -1,5 +1,7 @@
 # Not part of the website: keep them off the Vercel deployment
 README.md
+README.ru.md
 .gitignore
 .nojekyll
 tests
+tools

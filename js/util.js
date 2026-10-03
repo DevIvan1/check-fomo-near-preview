@@ -1,6 +1,6 @@
 // Pure helpers: encoding, BigInt math, number and time formatting (locale follows the UI language).
 
-import { t, getLocale } from './i18n.js';
+import { t, getLocale } from './i18n.js?v=a142e7bf';
 
 export function b64ToText(b64) {
   if (typeof b64 !== 'string') return null;

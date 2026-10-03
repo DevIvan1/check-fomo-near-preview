@@ -1,13 +1,13 @@
 // Browser test suite. Open tests/index.html through any static server.
 
-import { analyzeTx, parseLog, statusKind, failureMessage } from '../js/parser.js';
-import { describe, humanError } from '../js/describe.js';
-import { computePositions, positionRows, accountStats, periodSummary } from '../js/positions.js';
-import { normalizeAccount, shouldAlert, nearSize, soundKind } from '../js/rules.js';
-import { toDecimalString, toNumber, fmtNum, big, shortHash, shortAccount, fmtPct, relTime } from '../js/util.js';
-import { safeIcon, dclPrice, routePrice } from '../js/tokens.js';
-import { NEAR_ID } from '../js/config.js';
-import { setLang, t, tp, dictKeys } from '../js/i18n.js';
+import { analyzeTx, parseLog, statusKind, failureMessage, fromRpcTxStatus } from '../js/parser.js?v=a142e7bf';
+import { describe, humanError } from '../js/describe.js?v=a142e7bf';
+import { computePositions, positionRows, accountStats, periodSummary } from '../js/positions.js?v=a142e7bf';
+import { normalizeAccount, shouldAlert, nearSize, soundKind } from '../js/rules.js?v=a142e7bf';
+import { toDecimalString, toNumber, fmtNum, big, shortHash, shortAccount, fmtPct, relTime } from '../js/util.js?v=a142e7bf';
+import { safeIcon, dclPrice, routePrice } from '../js/tokens.js?v=a142e7bf';
+import { NEAR_ID } from '../js/config.js?v=a142e7bf';
+import { setLang, t, tp, dictKeys } from '../js/i18n.js?v=a142e7bf';
 
 const ACC = 'hotfrog2879.near';
 const results = [];
@@ -271,6 +271,26 @@ async function main() {
     ok(a.kind !== 'transfer_in', 'kind = ' + a.kind);
     ok(!/E-\d/.test(describe(a, ctx()).title));
   });
+  test('резервный источник: ответ RPC tx_status разбирается так же, как данные FastNEAR', () => {
+    for (const key of ['RPC_BUY_SINGULARTY', 'RPC_SELL_NEARLEE', 'RPC_PAYOUT_TOKEN']) {
+      const { rpc, meta, src } = fx[key];
+      const viaRpc = analyzeTx(fromRpcTxStatus(rpc, meta), ACC);
+      const viaFast = analyzeTx(fx[src], ACC);
+      eq(viaRpc.hash, viaFast.hash, key);
+      eq(viaRpc.kind, viaFast.kind, key + ' kind');
+      eq(viaRpc.pending, false, key + ' pending');
+      eq(viaRpc.blockHeight, viaFast.blockHeight, key + ' block');
+      eq(viaRpc.timestampMs, viaFast.timestampMs, key + ' time');
+      eq(viaRpc.nearDelta, viaFast.nearDelta, key + ' nearDelta');
+      eq(JSON.stringify(Object.keys(viaRpc.deltas).sort()), JSON.stringify(Object.keys(viaFast.deltas).sort()), key + ' tokens');
+      for (const tk of Object.keys(viaFast.deltas)) eq(viaRpc.deltas[tk], viaFast.deltas[tk], key + ' ' + tk);
+      if (viaFast.trade) {
+        eq(viaRpc.trade.amountIn, viaFast.trade.amountIn, key + ' in');
+        eq(viaRpc.trade.amountOut, viaFast.trade.amountOut, key + ' out');
+        eq(viaRpc.trade.route.join('>'), viaFast.trade.route.join('>'), key + ' route');
+      }
+    }
+  });
   test('неудачная покупка (проскальзывание)', () => {
     const a = A('FAILED_BUY_SYNTHETIC');
     eq(a.kind, 'trade_failed');
@@ -428,7 +448,7 @@ async function main() {
     ok(d.lines.length > 2);
   });
   test('текст: у каждого поста есть хеш транзакции', () => {
-    for (const key of Object.keys(fx)) {
+    for (const key of Object.keys(fx).filter((k) => !k.startsWith('RPC_'))) {
       const signer = key.startsWith('V2_') ? fx[key].transaction.signer_id : ACC;
       const d = describe(analyzeTx(fx[key], signer), ctx());
       ok(d.lines.some((l) => l.label === 'Транзакция' && l.copy === fx[key].transaction.hash), key);
@@ -615,7 +635,7 @@ async function main() {
     eq(describe(A('STORAGE_SINGULARTY'), ctx()).title, 'Registered with the SINGULARTY token');
     eq(describe(A('FUNDING'), ctx()).title, 'Received 385.07 NEAR from a9c866…c61d');
     eq(describe(A('ACCOUNT_CREATED'), ctx()).title, 'Account created');
-    for (const key of Object.keys(fx)) {
+    for (const key of Object.keys(fx).filter((k) => !k.startsWith('RPC_'))) {
       const signer = key.startsWith('V2_') || key === 'STOP_POINT_NOFILL' ? fx[key].transaction.signer_id : ACC;
       const d = describe(analyzeTx(fx[key], signer), ctx());
       ok(!/[А-Яа-яЁё]/.test(JSON.stringify(d)), key + ': в английском посте остался русский текст');

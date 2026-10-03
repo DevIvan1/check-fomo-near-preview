@@ -1,8 +1,8 @@
 // Turns a raw FastNEAR transaction (tx + receipts + outcomes) into a structured
 // description of what happened to one account. Pure: no network, no DOM.
 
-import { NEAR_ID, WNEAR, isDex, isStakingPool, tokenFamily } from './config.js';
-import { b64ToText, tryJson, big } from './util.js';
+import { NEAR_ID, WNEAR, isDex, isStakingPool, tokenFamily } from './config.js?v=a142e7bf';
+import { b64ToText, tryJson, big } from './util.js?v=a142e7bf';
 
 export function statusKind(status) {
   if (!status) return 'unknown';
@@ -593,4 +593,32 @@ function collectTokens(a) {
   if (a.registered) a.registered.forEach(add);
   if (a.kind === 'storage' && (tokenFamily(a.contract) || !isDex(a.contract))) add(a.contract);
   for (const t of a.taxes) add(t.token);
+}
+
+// Converts an RPC EXPERIMENTAL_tx_status result into the FastNEAR raw shape analyzeTx expects.
+// meta: { height, timestampNs } from the account-history index (RPC outcomes carry only block hashes).
+export function fromRpcTxStatus(res, meta = {}) {
+  const tx = res.transaction || {};
+  const txo = res.transaction_outcome || {};
+  const outcomes = new Map((res.receipts_outcome || []).map((o) => [o.id, o]));
+  const receipts = (res.receipts || []).map((r) => ({
+    receipt: { receipt_id: r.receipt_id, predecessor_id: r.predecessor_id, receiver_id: r.receiver_id, receipt: r.receipt },
+    execution_outcome: outcomes.get(r.receipt_id) || null,
+  }));
+  // RPC leaves out the receipt the transaction itself was converted into; rebuild it.
+  const firstId = txo.outcome?.receipt_ids?.[0];
+  if (firstId && outcomes.has(firstId) && !receipts.some((r) => r.receipt.receipt_id === firstId)) {
+    receipts.unshift({
+      receipt: {
+        receipt_id: firstId, predecessor_id: tx.signer_id, receiver_id: tx.receiver_id,
+        receipt: { Action: { signer_id: tx.signer_id, actions: tx.actions || [] } },
+      },
+      execution_outcome: outcomes.get(firstId),
+    });
+  }
+  return {
+    transaction: { ...tx, hash: tx.hash || txo.id },
+    execution_outcome: { ...txo, block_height: meta.height ?? null, block_timestamp: meta.timestampNs ?? null, index: 0 },
+    receipts: receipts.filter((r) => r.execution_outcome),
+  };
 }

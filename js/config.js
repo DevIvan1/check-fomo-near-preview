@@ -1,6 +1,6 @@
 // Static configuration: endpoints, known contracts and labels.
 
-import { t } from './i18n.js';
+import { t } from './i18n.js?v=a142e7bf';
 
 export const TX_API = 'https://tx.main.fastnear.com/v0';
 export const FASTNEAR_API = 'https://api.fastnear.com/v1';
@@ -15,6 +15,9 @@ export const RPC_URLS = [
 ];
 export const RPC_FAST = 3;
 export const DCL_CONTRACT = 'dclv2.ref-labs.near';
+export const RPC_ARCHIVAL = 'https://archival-rpc.mainnet.fastnear.com';
+// Backup account history when the FastNEAR tx API is unavailable (details then come from RPC).
+export const NEARBLOCKS_API = 'https://api.nearblocks.io/v1';
 export const NEARLY_API = 'https://nearly.trade/api';
 export const INTEAR_PRICES = 'https://prices.intear.tech';
 export const REF_PRICES = 'https://api.ref.finance/list-token-price';
