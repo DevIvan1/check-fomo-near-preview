@@ -108,7 +108,7 @@ const DICT = {
     noTradesShort: 'no trades',
     openSummary: 'Open the summary for this period',
     'cn.title': 'Connect your NEAR wallet',
-    'cn.sub': 'Sign in with HOT, Meteor, Intear, MyNearWallet and other NEAR wallets. Check fomo only reads your address: no transactions, no approvals.',
+    'cn.sub': 'Sign in with HOT, Meteor, Intear, MyNearWallet and other NEAR wallets. Check fomo only reads your address: no transactions, no approvals. The address is saved to the site’s usage log.',
     'cn.button': 'Connect wallet',
     'cn.loading': 'Loading wallets…',
     'cn.failed': 'Could not load the wallet connector. Check your connection or use your address below.',
@@ -232,7 +232,7 @@ const DICT = {
     showMentions: 'Show mentions without fund movements',
     testSound: 'Test sound',
     done: 'Done',
-    sources: 'Data: FastNEAR (transactions, balances), NEAR RPC, Nearly API, Intear (prices, swaps), Rhea (prices, pools). Everything runs in your browser, no server.',
+    sources: 'Data: FastNEAR (transactions, balances), NEAR RPC, Nearly API, Intear (prices, swaps), Rhea (prices, pools). Everything is calculated in your browser. The site keeps a usage log: wallet addresses that connect or are searched here (no IP, no cookies).',
 
     // ---- app ----
     copied: 'Copied',
@@ -496,7 +496,7 @@ const DICT = {
     noTradesShort: 'нет сделок',
     openSummary: 'Открыть сводку за этот период',
     'cn.title': 'Подключите кошелёк NEAR',
-    'cn.sub': 'Вход через HOT, Meteor, Intear, MyNearWallet и другие кошельки NEAR. Check fomo только читает ваш адрес: никаких транзакций и подтверждений.',
+    'cn.sub': 'Вход через HOT, Meteor, Intear, MyNearWallet и другие кошельки NEAR. Check fomo только читает ваш адрес: никаких транзакций и подтверждений. Адрес сохраняется в журнал посещений сайта.',
     'cn.button': 'Подключить кошелёк',
     'cn.loading': 'Загружаем кошельки…',
     'cn.failed': 'Не удалось загрузить подключение кошелька. Проверьте соединение или войдите по адресу ниже.',
@@ -585,7 +585,7 @@ const DICT = {
     showMentions: 'Показывать упоминания без движения средств',
     testSound: 'Проверить звук',
     done: 'Готово',
-    sources: 'Данные: FastNEAR (транзакции, балансы), NEAR RPC, Nearly API, Intear (цены, свопы), Rhea (цены, пулы). Всё считается в браузере, сервер не нужен.',
+    sources: 'Данные: FastNEAR (транзакции, балансы), NEAR RPC, Nearly API, Intear (цены, свопы), Rhea (цены, пулы). Всё считается в браузере. Сайт ведёт журнал посещений: адреса кошельков, которые подключили или искали здесь (без IP и cookies).',
 
     copied: 'Скопировано',
     copy: 'Копировать',

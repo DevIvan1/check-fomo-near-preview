@@ -8,7 +8,8 @@
 // Periods work like Nearly's: a period holds the positions opened in it, each with its full result
 // (realized + unrealized at the current price), in USD. Only profitable wallets make the board.
 
-import { toNumber } from './util.js?v=25dbfcb0';
+import { toNumber } from './util.js?v=4f17072b';
+import { normalizeAccount } from './rules.js?v=4f17072b';
 
 export const WINDOWS = { '24h': 1, '7d': 7, '30d': 30 }; // days
 export const TOP_N = 100;
@@ -71,10 +72,11 @@ export const isMeme = (token) => memePlatform(token) !== null;
 export const isNearlyToken = (token) => memePlatform(token) === 'Nearly';
 
 // Protocol accounts that show up as "traders" in swap logs: intents solvers, routers, launchpad
-// contracts and token contracts themselves.
+// contracts and token contracts themselves. Anything that is not a valid NEAR account id (data
+// from outside APIs) is dropped before it reaches the page.
 const NOT_TRADERS = /^(intents\.near|.*\.ref-finance\.near|.*\.ref-labs\.near|router\.[a-z0-9_-]+\.near|lock\d*\.[a-z0-9_-]+\.near|intearbots\.near|.+\.aurabot\.near)$/;
 export function isTraderAccount(acc) {
-  if (!acc || typeof acc !== 'string' || NOT_TRADERS.test(acc)) return false;
+  if (!acc || typeof acc !== 'string' || normalizeAccount(acc) !== acc || NOT_TRADERS.test(acc)) return false;
   if (memePlatform(acc)) return false;
   return !PLATFORMS.some(([suffix]) => acc === suffix.slice(1));
 }

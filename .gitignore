@@ -1,1 +1,10 @@
 .claude/
+# Usage log and its credentials: personal data, never committed
+КОШЕЛЬКИ.txt
+КОШЕЛЬКИ.txt.tmp
+tools/.wallets.env
+tools/.wallets-cache.json
+__pycache__/
+# Local notes, not part of the project
+ФУНКЦИОНАЛ.md
+ОБНОВЛЕНИЯ.md

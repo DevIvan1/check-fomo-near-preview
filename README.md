@@ -56,6 +56,29 @@ Where the numbers come from, without counting anything twice:
 - **Positions & PnL** per token, **wallet balances**, **stats**, **filters**, **search** (token, hash, account), **CSV export**. Runs of small holder payouts are folded into one card.
 - **Language:** English (default) or Russian. **Theme:** system, light or dark. Both are in Settings and are remembered.
 
+## Security
+
+Check fomo never asks a wallet to sign anything: connecting only reveals the account address. The protections below keep it that way and keep injected code out.
+
+- **Strict Content-Security-Policy on the app** (`index.html`): scripts, styles and workers only from the site itself, network calls only to the listed APIs, no plugins, no `<base>` tricks, forms only to the site.
+- **Wallet code is isolated.** It loads only on `connect.html`, only after a click, and the main app never loads it. Each wallet runs in a sandboxed iframe (`allow-scripts` only) with no access to the page.
+- **No CDN for the connector.** NEAR Connect 0.11.4 is served from this site (`vendor/`, sha256 in the file header), so a CDN cannot change the code that runs on the connect page.
+- **All outside data is text.** Token names, symbols, accounts and API answers are rendered with `textContent`, never as HTML. Icons pass an image-only filter (`https:` or `data:image/…`). Account ids from outside APIs must match the NEAR account format before they are shown or opened. Spreadsheet formulas are neutralised in the CSV export.
+- **No open redirect.** The connect page returns only to pages of the same site.
+- **Headers on Vercel** (`vercel.json`): the site cannot be framed (clickjacking), no MIME sniffing, no referrer, camera / microphone / geolocation / payment disabled.
+- **No secrets in the code.** The usage-log storage token lives only in Vercel's environment; the local sync uses a read-only token from an ignored file.
+- **The GitHub Pages copy** shares the `devivan1.github.io` origin with the owner's other Pages sites; the Vercel site is the one meant for real users.
+
+## Usage log
+
+The site records which wallets use it, so the owner can see who connects:
+
+- **What is stored:** the account address, the kind of event (wallet connected, signed in without a wallet, a connected wallet came back, an address typed into search), the wallet app name, and the first/last time and count. No IP addresses (a hash of the IP lives two minutes as a rate limit), no cookies, nothing else. The same event from one browser is sent at most once per 6 hours. Local development is not logged.
+- **How:** the page sends a beacon to `api/track.py`, a Vercel function that validates the address, checks the origin, limits the rate (20 a minute per IP) and the size of the log (50,000 entries), and writes to Upstash Redis. Nothing can be read back over HTTP.
+- **Setup:** Vercel → the project → Storage → Create Database → Upstash for Redis → connect it to the project and redeploy. For the local list, copy `KV_REST_API_URL` and `KV_REST_API_READ_ONLY_TOKEN` from the database's `.env.local` tab into `tools/.wallets.env`.
+- **Local list:** `python tools/sync_wallets.py` writes `КОШЕЛЬКИ.txt` in the project folder (newest first, in three groups); Windows Task Scheduler runs it every 10 minutes. The file, its cache and the credentials are git-ignored.
+- **Note:** "signed in without a wallet" and "searched" are just typed addresses; only "wallet connected" means the person approved it in a wallet.
+
 ## Reliability
 
 - **No stale-cache breakage.** GitHub Pages caches files for 10 minutes. Every module URL carries the same content hash (`?v=…`, set by `tools/stamp.py`), so a browser never mixes old and new files.
@@ -65,7 +88,7 @@ Where the numbers come from, without counting anything twice:
 
 ## Data sources
 
-Everything runs in the browser, no server needed.
+Everything is calculated in the browser. The only server part is the usage log (`api/track.py`, see above).
 
 | What | Where from |
 |---|---|
@@ -87,7 +110,7 @@ python -m http.server 8000
 ```
 
 - **App:** http://localhost:8000/
-- **Tests:** http://localhost:8000/tests/ (72 tests: parser, both languages, PnL and summary, positions, leaderboard maths and engine, backup-source conversion, alert rules, XSS safety). `tests/` and `tools/` are not deployed to Vercel (see `.vercelignore`).
+- **Tests:** http://localhost:8000/tests/ (75 tests: parser, both languages, PnL and summary, positions, leaderboard maths and engine, usage-log client, backup-source conversion, alert rules, XSS safety). Usage-log server and sync, offline against a fake Redis: `python tests/test_usage_log.py` (7 tests). `tests/` and `tools/` are not deployed to Vercel (see `.vercelignore`).
 
 Before every commit, stamp the module versions:
 

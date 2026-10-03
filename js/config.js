@@ -1,6 +1,6 @@
 // Static configuration: endpoints, known contracts and labels.
 
-import { t } from './i18n.js?v=25dbfcb0';
+import { t } from './i18n.js?v=4f17072b';
 
 export const TX_API = 'https://tx.main.fastnear.com/v0';
 export const FASTNEAR_API = 'https://api.fastnear.com/v1';
@@ -24,6 +24,8 @@ export const REF_PRICES = 'https://api.ref.finance/list-token-price';
 // Leaderboard: Intear's public swap history and Rhea's pool list (24h volume).
 export const INTEAR_EVENTS = 'https://events-v3.intear.tech/v3';
 export const REF_API = 'https://api.ref.finance';
+// Usage log endpoint for the GitHub Pages copy (the Vercel site posts to its own /api/track).
+export const TRACK_URL = 'https://check-fomo-near.vercel.app/api/track';
 
 // Optional FastNEAR *browser* key (see https://docs.fastnear.com/auth), restricted to your
 // site's domain. Without it the public anonymous limits apply. Never put a server key here.

@@ -1,9 +1,9 @@
 // Builds the human-readable post for an analysed transaction (texts come from i18n).
 // Pure apart from the current language: everything external comes through `ctx`.
 
-import { NEAR_ID, WNEAR, contractName, tokenFamily, explorer } from './config.js?v=25dbfcb0';
-import { toNumber, toDecimalString, fmtNum, fmtUsd, fmtPct, shortAccount, shortHash, absBig, isImplicit } from './util.js?v=25dbfcb0';
-import { t, tp, getLocale } from './i18n.js?v=25dbfcb0';
+import { NEAR_ID, WNEAR, contractName, tokenFamily, explorer } from './config.js?v=4f17072b';
+import { toNumber, toDecimalString, fmtNum, fmtUsd, fmtPct, shortAccount, shortHash, absBig, isImplicit } from './util.js?v=4f17072b';
+import { t, tp, getLocale } from './i18n.js?v=4f17072b';
 
 const GLYPHS = {
   transfer_in: '↓', transfer_out: '↑', ft_in: '↓', ft_out: '↑', receive_multi: '↓', debit: '↑',

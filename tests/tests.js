@@ -1,16 +1,17 @@
 // Browser test suite. Open tests/index.html through any static server.
 
-import { analyzeTx, parseLog, statusKind, failureMessage, fromRpcTxStatus } from '../js/parser.js?v=25dbfcb0';
-import { describe, humanError } from '../js/describe.js?v=25dbfcb0';
-import { computePositions, positionRows, accountStats, periodSummary, positionCards, positionsOverview, sortPositionCards } from '../js/positions.js?v=25dbfcb0';
-import { normalizeAccount, shouldAlert, nearSize, soundKind } from '../js/rules.js?v=25dbfcb0';
-import { toDecimalString, toNumber, fmtNum, big, shortHash, shortAccount, fmtPct, relTime } from '../js/util.js?v=25dbfcb0';
-import { safeIcon, dclPrice, routePrice } from '../js/tokens.js?v=25dbfcb0';
-import { NEAR_ID } from '../js/config.js?v=25dbfcb0';
-import * as session from '../js/session.js?v=25dbfcb0';
-import { FollowFeed, isFeedEvent } from '../js/following.js?v=25dbfcb0';
-import { setLang, t, tp, dictKeys } from '../js/i18n.js?v=25dbfcb0';
-import * as lb from '../js/leaderboard.js?v=25dbfcb0';
+import { analyzeTx, parseLog, statusKind, failureMessage, fromRpcTxStatus } from '../js/parser.js?v=4f17072b';
+import { describe, humanError } from '../js/describe.js?v=4f17072b';
+import { computePositions, positionRows, accountStats, periodSummary, positionCards, positionsOverview, sortPositionCards } from '../js/positions.js?v=4f17072b';
+import { normalizeAccount, shouldAlert, nearSize, soundKind } from '../js/rules.js?v=4f17072b';
+import { toDecimalString, toNumber, fmtNum, big, shortHash, shortAccount, fmtPct, relTime } from '../js/util.js?v=4f17072b';
+import { safeIcon, dclPrice, routePrice } from '../js/tokens.js?v=4f17072b';
+import { NEAR_ID } from '../js/config.js?v=4f17072b';
+import * as session from '../js/session.js?v=4f17072b';
+import { FollowFeed, isFeedEvent } from '../js/following.js?v=4f17072b';
+import { setLang, t, tp, dictKeys } from '../js/i18n.js?v=4f17072b';
+import * as lb from '../js/leaderboard.js?v=4f17072b';
+import { track, trackEndpoint } from '../js/track.js?v=4f17072b';
 
 const ACC = 'hotfrog2879.near';
 const results = [];
@@ -1084,6 +1085,38 @@ async function main() {
     eq(b.status, 'error');
     ok(b.error);
     eq(b.rows('7d').length, 0);
+  });
+
+  // ---------- usage log (who connects / searches) ----------
+  test('журнал: куда отправлять (Vercel — к себе, Pages — на Vercel, локально — никуда)', () => {
+    eq(trackEndpoint({ protocol: 'https:', hostname: 'check-fomo-near.vercel.app' }), '/api/track');
+    eq(trackEndpoint({ protocol: 'https:', hostname: 'devivan1.github.io' }), 'https://check-fomo-near.vercel.app/api/track');
+    eq(trackEndpoint({ protocol: 'http:', hostname: 'localhost' }), null);
+  });
+  test('журнал: проверка адреса, повтор не чаще раза в 6 часов, очистка имени кошелька', () => {
+    const sent = [];
+    const mem = new Map();
+    const storage = { getItem: (k) => mem.get(k) ?? null, setItem: (k, v) => mem.set(k, v) };
+    const opts = (now) => ({ send: (url, body) => sent.push({ url, body: JSON.parse(body) }), loc: { protocol: 'https:', hostname: 'x.vercel.app' }, now, storage });
+    eq(track('connect', ' Alice.NEAR ', 'HOT <b>Wallet</b>', opts(1000)), 1);
+    eq(sent[0].url, '/api/track');
+    eq(sent[0].body.account, 'alice.near');
+    eq(sent[0].body.kind, 'connect');
+    eq(sent[0].body.wallet, 'HOT bWalletb', 'без разметки');
+    eq(track('connect', 'alice.near', null, opts(2000)), false, 'повтор в течение 6 часов не отправляется');
+    ok(track('search', 'alice.near', null, opts(2000)), 'другой вид события — отправляется');
+    ok(track('connect', 'alice.near', null, opts(1000 + 6 * 3600 * 1000 + 1)), 'через 6 часов снова');
+    eq(track('connect', '<script>', null, opts(5000)), false, 'неверный адрес не отправляется');
+    eq(track('hack', 'bob.near', null, opts(5000)), false, 'неизвестный вид события');
+    eq(track('search', 'bob.near', null, { ...opts(5000), loc: { protocol: 'http:', hostname: 'localhost' } }), false, 'локально не пишем');
+    eq(sent.length, 3);
+  });
+  test('рейтинг: аккаунты из внешних API проверяются на формат NEAR', () => {
+    eq(lb.isTraderAccount('Alice.near'), false, 'заглавные — не канонический адрес');
+    eq(lb.isTraderAccount('a.near/<img src=x onerror=alert(1)>'), false);
+    eq(lb.isTraderAccount('javascript:alert(1)'), false);
+    const rows = lb.mergeWindow({ listRows: [{ account: '<b>x</b>', pnl_usd: 1e6, trades: 1, basis_usd: 1 }, { account: 'ok.near', pnl_usd: 5, trades: 1, basis_usd: 1 }] }, 0);
+    eq(rows.map((r) => r.account).join(), 'ok.near');
   });
 
   await Promise.all(pendingTests);
