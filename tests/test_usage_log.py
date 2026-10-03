@@ -1,4 +1,5 @@
-"""Usage log end to end, offline: api/track.py against a fake Upstash Redis, then tools/sync_wallets.py.
+"""Usage log end to end, offline: api/track.py against a fake Upstash Redis, then tools/sync_wallets.py
+(the Excel table).
 
 Run:  python tests/test_usage_log.py
 """
@@ -13,6 +14,8 @@ import sys
 import tempfile
 import threading
 import unittest
+import zipfile
+from xml.etree import ElementTree
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 WRITE_TOKEN, READ_TOKEN = 'write-token', 'read-token'
@@ -87,6 +90,33 @@ class FakeRedis(http.server.BaseHTTPRequestHandler):
         pass
 
 
+NS = {'m': 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}
+
+
+def read_xlsx(path):
+    """{sheet name: rows}; a cell is its text, its number, or '=FORMULA -> cached value'."""
+    with zipfile.ZipFile(path) as z:
+        wb = ElementTree.fromstring(z.read('xl/workbook.xml'))
+        names = [sh.get('name') for sh in wb.find('m:sheets', NS)]
+        out = {}
+        for i, name in enumerate(names, 1):
+            root = ElementTree.fromstring(z.read(f'xl/worksheets/sheet{i}.xml'))
+            rows = []
+            for row in root.iter('{%s}row' % NS['m']):
+                cells = []
+                for c in row:
+                    t, v, f = c.find('m:is/m:t', NS), c.find('m:v', NS), c.find('m:f', NS)
+                    if t is not None:
+                        cells.append(t.text)
+                    elif f is not None:
+                        cells.append('=' + f.text + ' -> ' + (v.text if v is not None else ''))
+                    else:
+                        cells.append(v.text if v is not None else None)
+                rows.append(cells)
+            out[name] = rows
+        return out
+
+
 def serve(handler_cls):
     srv = http.server.ThreadingHTTPServer(('127.0.0.1', 0), handler_cls)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
@@ -123,6 +153,16 @@ class UsageLogTest(unittest.TestCase):
         r.read()
         return r.status, dict(r.getheaders())
 
+    def test_search_remembers_who_searched(self):
+        self.post({'kind': 'search', 'account': 'whale.near', 'by': 'Alice.near'})
+        self.post({'kind': 'search', 'account': 'whale.near'})
+        self.post({'kind': 'search', 'account': 'whale.near', 'by': '<bad>'})
+        self.post({'kind': 'connect', 'account': 'bob.near', 'by': 'alice.near'})
+        db = FakeRedis.db
+        self.assertEqual(db['cf:count']['search|alice.near|whale.near'], 1)
+        self.assertEqual(db['cf:count']['search|-|whale.near'], 2, 'no or invalid searcher = anonymous')
+        self.assertIn('connect|bob.near', db['cf:last'], '"by" only matters for searches')
+
     def test_records_connect_search_and_counts(self):
         st, h = self.post({'kind': 'connect', 'account': 'Alice.near', 'wallet': 'HOT Wallet<script>'})
         self.assertEqual(st, 204)
@@ -131,9 +171,9 @@ class UsageLogTest(unittest.TestCase):
         self.post({'kind': 'search', 'account': 'bob.near'})
         db = FakeRedis.db
         self.assertIn('connect|alice.near', db['cf:last'], 'account is lower-cased')
-        self.assertEqual(db['cf:count']['search|bob.near'], 2)
+        self.assertEqual(db['cf:count']['search|-|bob.near'], 2)
         self.assertEqual(db['cf:wallet']['alice.near'], 'HOT Walletscript', 'markup characters are stripped')
-        self.assertEqual(db['cf:first']['search|bob.near'] <= db['cf:last']['search|bob.near'], True)
+        self.assertEqual(db['cf:first']['search|-|bob.near'] <= db['cf:last']['search|-|bob.near'], True)
         self.assertFalse(any('1.2.3.4' in str(k) for k in db), 'the IP is never stored as is')
 
     def test_rejects_bad_input(self):
@@ -148,7 +188,10 @@ class UsageLogTest(unittest.TestCase):
         self.assertEqual(self.post({'kind': 'search', 'account': 'a.near'}, origin=None)[0], 403)
         st, _ = self.post({'kind': 'search', 'account': 'a.near'}, origin='https://check-fomo-near.vercel.app', host='check-fomo-near.vercel.app')
         self.assertEqual(st, 204, 'the site itself')
-        self.assertEqual(self.post(b'', method='GET')[0], 405, 'nothing can be read over HTTP')
+        conn = http.client.HTTPConnection('127.0.0.1', self.api.server_port, timeout=10)
+        conn.request('GET', '/api/track')
+        r = conn.getresponse()
+        self.assertEqual((r.status, json.loads(r.read())), (200, {'ok': True, 'storage': True}), 'only "is storage connected"')
 
     def test_rate_limit(self):
         codes = [self.post({'kind': 'search', 'account': f'u{i}.near'}, ip='9.9.9.9')[0] for i in range(25)]
@@ -162,53 +205,77 @@ class UsageLogTest(unittest.TestCase):
         try:
             for acc in ('a1.near', 'a2.near', 'a3.near'):
                 self.post({'kind': 'search', 'account': acc})
-            self.assertEqual(sorted(FakeRedis.db['cf:last']), ['search|a1.near', 'search|a2.near'])
+            self.assertEqual(sorted(FakeRedis.db['cf:last']), ['search|-|a1.near', 'search|-|a2.near'])
             self.post({'kind': 'search', 'account': 'a1.near'})
-            self.assertEqual(FakeRedis.db['cf:count']['search|a1.near'], 2, 'known entries still update')
+            self.assertEqual(FakeRedis.db['cf:count']['search|-|a1.near'], 2, 'known entries still update')
         finally:
             self.track.MAX_ENTRIES = old
 
-    def test_sync_writes_text_file(self):
+    def test_sync_writes_excel_table(self):
         self.post({'kind': 'connect', 'account': 'alice.near', 'wallet': 'HOT Wallet'})
         self.post({'kind': 'visit', 'account': 'alice.near'})
+        self.post({'kind': 'search', 'account': 'whale.near', 'by': 'alice.near'})
+        self.post({'kind': 'search', 'account': 'shark.near', 'by': 'alice.near'})
         self.post({'kind': 'manual', 'account': 'watcher.near'})
         self.post({'kind': 'search', 'account': 'whale.near'})
+        FakeRedis.db['cf:last']['search|old.near'] = 1.0  # an entry from before searches had an author
+        FakeRedis.db['cf:first']['search|old.near'] = 1.0
         sync = load('sync_wallets', ROOT / 'tools' / 'sync_wallets.py')
         with tempfile.TemporaryDirectory() as tmp:
             tmp = pathlib.Path(tmp)
-            sync.OUT, sync.CACHE, sync.ENV_FILE = tmp / 'КОШЕЛЬКИ.txt', tmp / 'cache.json', tmp / '.wallets.env'
+            sync.OUT, sync.CACHE, sync.ENV_FILE = tmp / 'КОШЕЛЬКИ.xlsx', tmp / 'cache.json', tmp / '.wallets.env'
             sync.ENV_FILE.write_text(f'KV_REST_API_URL={os.environ["KV_REST_API_URL"]}\nKV_REST_API_READ_ONLY_TOKEN={READ_TOKEN}\n', encoding='utf-8')
             saved = os.environ.pop('KV_REST_API_TOKEN')
             try:
                 self.assertEqual(sync.main(), 0)
             finally:
                 os.environ['KV_REST_API_TOKEN'] = saved
-            text = sync.OUT.read_text(encoding='utf-8-sig')
-            self.assertIn('ПОДКЛЮЧИЛИ КОШЕЛЁК — 1', text)
-            self.assertRegex(text, r'2\s+HOT Wallet\s+alice\.near', 'connect + visit merged: 2 times')
-            self.assertIn('ВОШЛИ БЕЗ КОШЕЛЬКА (вписали свой адрес на странице входа) — 1', text)
-            self.assertIn('watcher.near', text)
-            self.assertIn('ИСКАЛИ НА САЙТЕ (вписали адрес в поиск) — 1', text)
-            self.assertIn('whale.near', text)
-            # storage down: the last good list stays, with a note
+            book = read_xlsx(sync.OUT)
+            self.assertEqual(list(book), ['Пользователи', 'Поиски', 'Сводка'])
+            users = book['Пользователи']
+            self.assertEqual(users[0][:3], ['№', 'Кошелёк', 'Как вошёл'])
+            by_acc = {r[1]: r for r in users[1:]}
+            self.assertEqual(set(by_acc), {'alice.near', 'watcher.near'})
+            alice = by_acc['alice.near']
+            self.assertEqual(alice[2], 'HOT Wallet')
+            self.assertEqual(alice[5], '2', 'connect + visit')
+            self.assertRegex(alice[6], r"^=COUNTIF\('Поиски'!B:B,B\d+\) -> 2$")
+            self.assertRegex(alice[7], r"^=SUMIF\('Поиски'!B:B,B\d+,'Поиски'!D:D\) -> 2$")
+            self.assertEqual(set(alice[8].split(', ')), {'whale.near', 'shark.near'})
+            self.assertEqual(by_acc['watcher.near'][2], 'без кошелька (вписал адрес)')
+            pairs = {(r[1], r[2]) for r in book['Поиски'][1:]}
+            self.assertEqual(pairs, {('alice.near', 'whale.near'), ('alice.near', 'shark.near'),
+                                     ('(без входа)', 'whale.near'), ('(без входа)', 'old.near')})
+            summary = {r[0]: r[1] for r in book['Сводка'] if r and len(r) > 1}
+            self.assertEqual(summary['Пользователей (вошли кошельком или вписали адрес)'], "=COUNTA('Пользователи'!B:B)-1 -> 2")
+            self.assertTrue(summary['Из них подключили кошелёк'].endswith('-> 1'))
+            self.assertTrue(summary['Поисков всего'].endswith('-> 4'))
+            # storage down: the last good table stays, with a note
             sync.read_env = lambda: ('http://127.0.0.1:9', READ_TOKEN)
             self.assertEqual(sync.main(), 2)
-            text = sync.OUT.read_text(encoding='utf-8-sig')
-            self.assertIn('Не удалось обновить', text)
-            self.assertIn('alice.near', text)
+            book = read_xlsx(sync.OUT)
+            self.assertIn('alice.near', [r[1] for r in book['Пользователи'][1:]])
+            self.assertTrue(any(r and r[0] == 'Внимание' and 'Не удалось обновить' in r[1] for r in book['Сводка']))
 
     def test_sync_without_credentials_explains_setup(self):
         sync = load('sync_wallets2', ROOT / 'tools' / 'sync_wallets.py')
         with tempfile.TemporaryDirectory() as tmp:
             tmp = pathlib.Path(tmp)
-            sync.OUT, sync.CACHE, sync.ENV_FILE = tmp / 'out.txt', tmp / 'c.json', tmp / 'missing.env'
+            sync.OUT, sync.CACHE, sync.ENV_FILE = tmp / 'out.xlsx', tmp / 'c.json', tmp / 'missing.env'
             saved = {k: os.environ.pop(k) for k in ('KV_REST_API_URL', 'KV_REST_API_TOKEN')}
             try:
                 self.assertEqual(sync.main(), 1)
             finally:
                 os.environ.update(saved)
-            self.assertIn('Учёт ещё не подключён', sync.OUT.read_text(encoding='utf-8-sig'))
+            notes = [r[1] for r in read_xlsx(sync.OUT)['Сводка'] if r and len(r) > 1 and r[0] in ('Внимание', 'Настройка')]
+            self.assertIn('Учёт ещё не подключён: нет доступа к базе.', notes)
 
+    def test_xlsx_text_is_escaped(self):
+        sync = load('sync_wallets3', ROOT / 'tools' / 'sync_wallets.py')
+        with tempfile.TemporaryDirectory() as tmp:
+            path = pathlib.Path(tmp) / 'x.xlsx'
+            sync.write_xlsx(path, [{'name': 'T', 'columns': [('a', 10, 'text')], 'rows': [['<b>&"x"\x01']]}])
+            self.assertEqual(read_xlsx(path)['T'][1][0], '<b>&"x"', 'markup is text, control characters dropped')
 
 if __name__ == '__main__':
     sys.exit(0 if unittest.main(exit=False, verbosity=2).result.wasSuccessful() else 1)

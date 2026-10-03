@@ -73,10 +73,10 @@ Check fomo never asks a wallet to sign anything: connecting only reveals the acc
 
 The site records which wallets use it, so the owner can see who connects:
 
-- **What is stored:** the account address, the kind of event (wallet connected, signed in without a wallet, a connected wallet came back, an address typed into search), the wallet app name, and the first/last time and count. No IP addresses (a hash of the IP lives two minutes as a rate limit), no cookies, nothing else. The same event from one browser is sent at most once per 6 hours. Local development is not logged.
-- **How:** the page sends a beacon to `api/track.py`, a Vercel function that validates the address, checks the origin, limits the rate (20 a minute per IP) and the size of the log (50,000 entries), and writes to Upstash Redis. Nothing can be read back over HTTP.
+- **What is stored:** the account address, the kind of event (wallet connected, signed in without a wallet, a connected wallet came back, an address typed into search), for searches the signed-in wallet that searched, the wallet app name, and the first/last time and count. No IP addresses (a hash of the IP lives two minutes as a rate limit), no cookies, nothing else. The same event from one browser is sent at most once per 6 hours. Local development is not logged.
+- **How:** the page sends a beacon to `api/track.py`, a Vercel function that validates the address, checks the origin, limits the rate (20 a minute per IP) and the size of the log (50,000 entries), and writes to Upstash Redis. The log cannot be read over HTTP (`GET /api/track` only says whether storage is connected).
 - **Setup:** Vercel → the project → Storage → Create Database → Upstash for Redis → connect it to the project and redeploy. For the local list, copy `KV_REST_API_URL` and `KV_REST_API_READ_ONLY_TOKEN` from the database's `.env.local` tab into `tools/.wallets.env`.
-- **Local list:** `python tools/sync_wallets.py` writes `КОШЕЛЬКИ.txt` in the project folder (newest first, in three groups); Windows Task Scheduler runs it every 10 minutes. The file, its cache and the credentials are git-ignored.
+- **Local Excel table:** `python tools/sync_wallets.py` writes `КОШЕЛЬКИ.xlsx` in the project folder; Windows Task Scheduler runs it every 10 minutes. Sheets: **Пользователи** (each wallet that signed in: how, first and last time, visits, how many wallets it searched and which), **Поиски** (who searched which wallet, how many times, when; `(без входа)` = not signed in) and **Сводка** (totals and notes). Written with the standard library (`tools/xlsx_lite.py`), so the task needs no extra packages. Excel does not reload an open file: close and reopen it to see new data. The file, its cache and the credentials are git-ignored.
 - **Note:** "signed in without a wallet" and "searched" are just typed addresses; only "wallet connected" means the person approved it in a wallet.
 
 ## Reliability
@@ -110,7 +110,7 @@ python -m http.server 8000
 ```
 
 - **App:** http://localhost:8000/
-- **Tests:** http://localhost:8000/tests/ (75 tests: parser, both languages, PnL and summary, positions, leaderboard maths and engine, usage-log client, backup-source conversion, alert rules, XSS safety). Usage-log server and sync, offline against a fake Redis: `python tests/test_usage_log.py` (7 tests). `tests/` and `tools/` are not deployed to Vercel (see `.vercelignore`).
+- **Tests:** http://localhost:8000/tests/ (75 tests: parser, both languages, PnL and summary, positions, leaderboard maths and engine, usage-log client, backup-source conversion, alert rules, XSS safety). Usage-log server and the Excel export, offline against a fake Redis: `python tests/test_usage_log.py` (9 tests). `tests/` and `tools/` are not deployed to Vercel (see `.vercelignore`).
 
 Before every commit, stamp the module versions:
 

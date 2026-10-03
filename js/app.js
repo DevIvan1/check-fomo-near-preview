@@ -1,22 +1,22 @@
 // UI + live polling loop.
 
-import { DEFAULT_SETTINGS, HISTORY_PAGE, POLL_PAGE, NEAR_ID, WNEAR, explorer } from './config.js?v=4f17072b';
-import { normalizeAccount, shouldAlert, soundKind } from './rules.js?v=4f17072b';
-import * as api from './api.js?v=4f17072b';
-import * as tokens from './tokens.js?v=4f17072b';
-import { analyzeTx } from './parser.js?v=4f17072b';
-import { describe, tokenLinks } from './describe.js?v=4f17072b';
-import { computePositions, periodSummary, positionCards, positionsOverview, sortPositionCards } from './positions.js?v=4f17072b';
-import * as alerts from './alerts.js?v=4f17072b';
+import { DEFAULT_SETTINGS, HISTORY_PAGE, POLL_PAGE, NEAR_ID, WNEAR, explorer } from './config.js?v=d41ccbfd';
+import { normalizeAccount, shouldAlert, soundKind } from './rules.js?v=d41ccbfd';
+import * as api from './api.js?v=d41ccbfd';
+import * as tokens from './tokens.js?v=d41ccbfd';
+import { analyzeTx } from './parser.js?v=d41ccbfd';
+import { describe, tokenLinks } from './describe.js?v=d41ccbfd';
+import { computePositions, periodSummary, positionCards, positionsOverview, sortPositionCards } from './positions.js?v=d41ccbfd';
+import * as alerts from './alerts.js?v=d41ccbfd';
 import {
   fmtNum, fmtUsd, fmtUsdCompact, fmtPct, fmtDateShort, relTime, fmtTime, fmtDateTime, dayLabel, toNumber, shortAccount,
   storageGet, storageSet, toDecimalString,
-} from './util.js?v=4f17072b';
-import { t, tp, setLang, getLang, getLocale, applyStatic } from './i18n.js?v=4f17072b';
-import * as session from './session.js?v=4f17072b';
-import { FollowFeed } from './following.js?v=4f17072b';
-import { Leaderboard, WINDOWS as LB_WINDOWS } from './leaderboard.js?v=4f17072b';
-import { track } from './track.js?v=4f17072b';
+} from './util.js?v=d41ccbfd';
+import { t, tp, setLang, getLang, getLocale, applyStatic } from './i18n.js?v=d41ccbfd';
+import * as session from './session.js?v=d41ccbfd';
+import { FollowFeed } from './following.js?v=d41ccbfd';
+import { Leaderboard, WINDOWS as LB_WINDOWS } from './leaderboard.js?v=d41ccbfd';
+import { track } from './track.js?v=d41ccbfd';
 
 const $ = (sel) => document.querySelector(sel);
 const SETTINGS_KEY = 'nwm.settings.v1';
@@ -813,7 +813,7 @@ function onTick() {
 
 function startTicker() {
   try {
-    const w = new Worker(new URL('./ticker.js?v=4f17072b', import.meta.url));
+    const w = new Worker(new URL('./ticker.js?v=d41ccbfd', import.meta.url));
     w.onmessage = onTick;
     w.postMessage({ cmd: 'start', ms: 500 });
   } catch {
@@ -1328,7 +1328,7 @@ function bindUI() {
       toast(t('badAccount'));
       return;
     }
-    track('search', acc);
+    track('search', acc, null, { by: session.getSession()?.accountId });
     if (acc !== state.account) switchAccount(acc);
   });
 
@@ -1339,7 +1339,7 @@ function bindUI() {
       toast(t('badAddress'));
       return;
     }
-    track('search', acc);
+    track('search', acc, null, { by: session.getSession()?.accountId });
     switchAccount(acc);
   });
 

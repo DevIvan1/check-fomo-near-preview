@@ -1,7 +1,9 @@
 .claude/
 # Usage log and its credentials: personal data, never committed
+КОШЕЛЬКИ.xlsx
+~КОШЕЛЬКИ.xlsx
+~$КОШЕЛЬКИ.xlsx
 КОШЕЛЬКИ.txt
-КОШЕЛЬКИ.txt.tmp
 tools/.wallets.env
 tools/.wallets-cache.json
 __pycache__/

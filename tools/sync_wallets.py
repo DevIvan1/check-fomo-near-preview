@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
-"""Writes КОШЕЛЬКИ.txt in the project folder: wallets that connected to Check fomo or were searched on it.
+"""Writes КОШЕЛЬКИ.xlsx in the project folder: who uses Check fomo and which wallets they searched.
 
+Sheets: «Пользователи» (wallets that signed in: connected a wallet or typed their address),
+«Поиски» (who searched which wallet) and «Сводка» (totals and how to read the table).
 Reads the usage log that api/track.py keeps in Upstash Redis. Windows Task Scheduler runs this every
 10 minutes (task "Check fomo - wallets"); it can also be run by hand:  python tools/sync_wallets.py
 
 Credentials go into tools/.wallets.env (never committed, never deployed):
     KV_REST_API_URL=https://<your-db>.upstash.io
     KV_REST_API_READ_ONLY_TOKEN=<read-only token>
-(the same names as in Vercel -> Storage -> your Upstash database -> .env.local; a read-only token is enough)
+(the same names as in Vercel -> Storage -> your Upstash database -> .env.local; read-only is enough)
 """
 
 import datetime
@@ -17,16 +19,17 @@ import pathlib
 import sys
 import urllib.request
 
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+from xlsx_lite import write_xlsx  # noqa: E402
+
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-OUT = ROOT / 'КОШЕЛЬКИ.txt'
+OUT = ROOT / 'КОШЕЛЬКИ.xlsx'
 ENV_FILE = ROOT / 'tools' / '.wallets.env'
 CACHE = ROOT / 'tools' / '.wallets-cache.json'  # last good data, shown if an update fails
 
-KIND_GROUPS = [
-    ('ПОДКЛЮЧИЛИ КОШЕЛЁК', ('connect', 'visit')),
-    ('ВОШЛИ БЕЗ КОШЕЛЬКА (вписали свой адрес на странице входа)', ('manual',)),
-    ('ИСКАЛИ НА САЙТЕ (вписали адрес в поиск)', ('search',)),
-]
+ANON = '(без входа)'
+MANUAL = 'без кошелька (вписал адрес)'
+LIST_MAX = 40  # searched wallets listed per user on the first sheet
 
 
 def read_env():
@@ -59,88 +62,158 @@ def fetch(url, token):
     return {'last': last, 'first': first, 'count': count, 'wallet': wallet}
 
 
-def clean(s, n):
+def clean(s, n=200):
     return ''.join(ch for ch in str(s) if ch.isprintable())[:n]
 
 
-def when(ms):
-    return datetime.datetime.fromtimestamp(int(float(ms)) / 1000).strftime('%d.%m.%Y %H:%M')
+def dt(ms):
+    return datetime.datetime.fromtimestamp(float(ms) / 1000).replace(microsecond=0)
+
+
+def parse_member(member):
+    """'connect|acc' -> ('connect', None, acc); 'search|who|acc' -> ('search', who, acc)."""
+    parts = str(member).split('|')
+    if parts[0] == 'search' and len(parts) in (2, 3):
+        return ('search', parts[1] if len(parts) == 3 else '-', parts[-1])
+    if parts[0] in ('connect', 'manual', 'visit') and len(parts) == 2:
+        return (parts[0], None, parts[1])
+    return None
 
 
 def build(data):
-    """-> list of (title, rows); a row: (last_ms, first_ms, count, wallet, account)."""
-    by_kind = {}
+    """-> (users, searches): users sorted by last activity, searches sorted by last time."""
+    users, searches = {}, {}
+
+    def user(acc):
+        return users.setdefault(acc, {'account': acc, 'first': None, 'last': None, 'visits': 0, 'methods': []})
+
+    def stretch(u, first, last):
+        u['first'] = first if u['first'] is None else min(u['first'], first)
+        u['last'] = last if u['last'] is None else max(u['last'], last)
+
     for member, last in data['last'].items():
-        kind, _, acc = member.partition('|')
-        first = data['first'].get(member, last)
-        n = int(data['count'].get(member, 1) or 1)
-        by_kind.setdefault(kind, {}).setdefault(acc, []).append((float(last), float(first), n))
-    groups = []
-    for title, kinds in KIND_GROUPS:
-        merged = {}
-        for kind in kinds:
-            for acc, items in by_kind.get(kind, {}).items():
-                cur = merged.get(acc, [0.0, float('inf'), 0])
-                for last, first, n in items:
-                    cur = [max(cur[0], last), min(cur[1], first), cur[2] + n]
-                merged[acc] = cur
-        rows = [(v[0], v[1], v[2], data['wallet'].get(acc, '') if 'connect' in kinds else '', acc) for acc, v in merged.items()]
-        rows.sort(key=lambda r: -r[0])
-        groups.append((title, rows))
-    return groups
-
-
-def render(groups, updated, note=None):
-    lines = ['Check fomo — кто пользуется сайтом', f'Обновлено: {updated} (автоматически каждые 10 минут)']
-    if note:
-        lines.append(note)
-    lines.append(' · '.join(f'{title.split(" (")[0].capitalize()}: {len(rows)}' for title, rows in groups))
-    for title, rows in groups:
-        lines += ['', f'{title} — {len(rows)}', '']
-        if not rows:
-            lines.append('   пока никого')
+        p = parse_member(member)
+        if not p:
             continue
-        lines.append(f'{"#":>4}  {"последний раз":<16}  {"первый раз":<16}  {"раз":>4}  {"кошелёк-приложение":<18}  аккаунт')
-        for i, (last, first, n, wallet, acc) in enumerate(rows, 1):
-            lines.append(f'{i:>4}  {when(last):<16}  {when(first):<16}  {n:>4}  {clean(wallet, 18) or "—":<18}  {clean(acc, 64)}')
-    lines += ['', '«Вошли без кошелька» и «искали» — просто введённые адреса: это не доказывает, что адрес принадлежит человеку.',
-              'Повторное событие с того же браузера учитывается не чаще раза в 6 часов.']
-    return '\n'.join(lines) + '\n'
+        kind, who, acc = p
+        last = float(last)
+        first = float(data['first'].get(member, last))
+        n = int(data['count'].get(member, 1) or 1)
+        if kind == 'search':
+            searches[(who, acc)] = {'who': who, 'target': acc, 'first': first, 'last': last, 'count': n}
+            if who != '-':
+                stretch(user(who), first, last)
+            continue
+        u = user(acc)
+        stretch(u, first, last)
+        u['visits'] += n
+        method = (data['wallet'].get(acc) or 'кошелёк') if kind in ('connect', 'visit') else MANUAL
+        if method not in u['methods'] and not (method == 'кошелёк' and len(u['methods'])):
+            u['methods'].append(method)
+    for u in users.values():
+        if len(u['methods']) > 1 and 'кошелёк' in u['methods']:
+            u['methods'].remove('кошелёк')
+    search_list = sorted(searches.values(), key=lambda s: -s['last'])
+    for u in users.values():
+        mine = [s for s in search_list if s['who'] == u['account']]
+        u['searched'] = [s['target'] for s in mine]
+        u['search_total'] = sum(s['count'] for s in mine)
+        if not u['methods']:
+            u['methods'] = ['кошелёк']
+    user_list = sorted(users.values(), key=lambda u: -(u['last'] or 0))
+    return user_list, search_list
 
 
-def write(text):
-    tmp = OUT.with_name(OUT.name + '.tmp')
-    tmp.write_text(text, encoding='utf-8-sig')
-    os.replace(tmp, OUT)
+def workbook(users, searches, updated, note=None, setup=None):
+    user_rows = []
+    for i, u in enumerate(users, 1):
+        r = i + 1
+        shown = u['searched'][:LIST_MAX]
+        more = len(u['searched']) - len(shown)
+        user_rows.append([
+            i, clean(u['account'], 64), clean('; '.join(u['methods']), 60), dt(u['first']), dt(u['last']), u['visits'],
+            {'f': f"COUNTIF('Поиски'!B:B,B{r})", 'v': len(u['searched'])},
+            {'f': f"SUMIF('Поиски'!B:B,B{r},'Поиски'!D:D)", 'v': u['search_total']},
+            ', '.join(shown) + (f' … и ещё {more}' if more else ''),
+        ])
+    search_rows = [[i, ANON if s['who'] == '-' else clean(s['who'], 64), clean(s['target'], 64), s['count'], dt(s['first']), dt(s['last'])]
+                   for i, s in enumerate(searches, 1)]
+    connected = sum(1 for u in users if u['methods'] != [MANUAL])
+    anon = sum(s['count'] for s in searches if s['who'] == '-')
+    t = lambda v: {'kind': 'text', 'value': v}
+    summary = [['Check fomo — кто пользуется сайтом', None], [None, None],
+               ['Обновлено', {'kind': 'datetime', 'value': updated}],
+               ['Обновляется', t('автоматически каждые 10 минут (Планировщик Windows, задача «Check fomo - wallets»)')]]
+    if note:
+        summary.append(['Внимание', t(note)])
+    for line in setup or []:
+        summary.append(['Настройка', t(line)])
+    summary += [
+        [None, None],
+        ['Пользователей (вошли кошельком или вписали адрес)', {'kind': 'int', 'f': "COUNTA('Пользователи'!B:B)-1", 'v': len(users)}],
+        ['Из них подключили кошелёк', {'kind': 'int', 'f': f"COUNTA('Пользователи'!C:C)-1-COUNTIF('Пользователи'!C:C,\"{MANUAL}\")", 'v': connected}],
+        ['Пар «кто — кого искал»', {'kind': 'int', 'f': "COUNTA('Поиски'!C:C)-1", 'v': len(searches)}],
+        ['Поисков всего', {'kind': 'int', 'f': "SUM('Поиски'!D:D)", 'v': sum(s['count'] for s in searches)}],
+        ['Из них без входа', {'kind': 'int', 'f': f"SUMIF('Поиски'!B:B,\"{ANON}\",'Поиски'!D:D)", 'v': anon}],
+        [None, None],
+        ['Как читать', None],
+        [t('«Как вошёл»: название кошелька — человек подтвердил вход в своём кошельке.'), None],
+        [t(f'«{MANUAL}» — просто ввёл адрес на странице входа: владение адресом не подтверждено.'), None],
+        [t(f'«Поиски» — адреса, вписанные в поиск на сайте; «{ANON}» — искал человек, который не вошёл.'), None],
+        [t('Одно и то же событие из одного браузера учитывается не чаще раза в 6 часов: «сколько раз» — число таких 6-часовых окон.'), None],
+        [t('Время — по часам этого компьютера.'), None],
+        [t('Excel не обновляет открытый файл: закройте и откройте его снова. Пока файл открыт, обновление ждёт.'), None],
+    ]
+    return [
+        {'name': 'Пользователи', 'columns': [
+            ('№', 6, 'int'), ('Кошелёк', 34, 'text'), ('Как вошёл', 24, 'text'), ('Первый раз', 17, 'datetime'),
+            ('Последний раз', 17, 'datetime'), ('Входов и визитов', 11, 'int'), ('Искал кошельков', 11, 'int'),
+            ('Поисков всего', 10, 'int'), ('Какие кошельки искал (свежие первыми)', 80, 'wrap')], 'rows': user_rows},
+        {'name': 'Поиски', 'columns': [
+            ('№', 6, 'int'), ('Кто искал', 34, 'text'), ('Какой кошелёк искал', 34, 'text'), ('Сколько раз', 10, 'int'),
+            ('Первый раз', 17, 'datetime'), ('Последний раз', 17, 'datetime')], 'rows': search_rows},
+        {'name': 'Сводка', 'table': False, 'columns': [('', 52, 'label'), ('', 30, 'text')], 'rows': summary},
+    ]
+
+
+def save(sheets, active=0):
+    tmp = OUT.with_name('~' + OUT.name)
+    write_xlsx(tmp, sheets, active)
+    try:
+        os.replace(tmp, OUT)
+    except PermissionError:  # the file is open in Excel: try again on the next run
+        tmp.unlink(missing_ok=True)
+        return False
+    return True
 
 
 def main():
-    now = datetime.datetime.now().strftime('%d.%m.%Y %H:%M')
+    now = datetime.datetime.now().replace(microsecond=0)
     url, token = read_env()
     if not url:
-        write('Check fomo — кто пользуется сайтом\n'
-              f'Проверено: {now}\n\n'
-              'Учёт ещё не подключён: нет доступа к базе.\n'
-              '1) Vercel -> проект -> Storage -> Create Database -> Upstash for Redis -> подключить к проекту.\n'
-              f'2) Создать файл {ENV_FILE} с двумя строками из вкладки .env.local базы:\n'
-              '   KV_REST_API_URL=...\n   KV_REST_API_READ_ONLY_TOKEN=...\n')
+        save(workbook([], [], now, note='Учёт ещё не подключён: нет доступа к базе.', setup=[
+            'Vercel -> проект -> Storage -> Create Database -> Upstash for Redis -> подключить к проекту.',
+            f'Создать файл {ENV_FILE} с двумя строками из вкладки .env.local базы:',
+            'KV_REST_API_URL=...   и   KV_REST_API_READ_ONLY_TOKEN=...']), active=2)  # open on the instructions
         print('not configured')
         return 1
     try:
         data = fetch(url, token)
-        CACHE.write_text(json.dumps({'at': now, 'data': data}), encoding='utf-8')
-        write(render(build(data), now))
-        print('ok', len(data['last']))
-        return 0
-    except Exception as e:  # keep showing the last good list
+    except Exception as e:  # keep showing the last good table
         cached = json.loads(CACHE.read_text(encoding='utf-8')) if CACHE.exists() else None
-        note = f'Не удалось обновить в {now}: {clean(e, 120)}'
+        note = f'Не удалось обновить в {now:%d.%m.%Y %H:%M}: {clean(e, 120)}'
         if cached:
-            write(render(build(cached['data']), cached['at'], note))
+            save(workbook(*build(cached['data']), datetime.datetime.fromisoformat(cached['at']), note))
         else:
-            write(f'Check fomo — кто пользуется сайтом\n{note}\n')
+            save(workbook([], [], now, note))
         print('error', e)
         return 2
+    CACHE.write_text(json.dumps({'at': now.isoformat(), 'data': data}), encoding='utf-8')
+    if not save(workbook(*build(data), now)):
+        print('locked: the file is open in Excel')
+        return 3
+    print('ok', len(data['last']))
+    return 0
 
 
 if __name__ == '__main__':

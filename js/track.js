@@ -2,8 +2,8 @@
 // no cookies). Sent to the Vercel function api/track.py; the GitHub Pages copy sends to the
 // Vercel URL. Local development (http://localhost) is not logged.
 
-import { TRACK_URL } from './config.js?v=4f17072b';
-import { normalizeAccount } from './rules.js?v=4f17072b';
+import { TRACK_URL } from './config.js?v=d41ccbfd';
+import { normalizeAccount } from './rules.js?v=d41ccbfd';
 
 const SENT_KEY = 'cf.tracked.v1';
 const RESEND_MS = 6 * 3600 * 1000; // the same wallet and kind is sent at most once per 6 hours
@@ -28,8 +28,10 @@ function beacon(url, body) {
 
 // kind: 'connect' (wallet connected) | 'manual' (signed in by typing an account) |
 //       'visit' (a connected wallet opened the site) | 'search' (an address typed into search)
-export function track(kind, account, wallet = null, { send = beacon, loc = location, now = Date.now(), storage = localStorage } = {}) {
+// by: for searches, the signed-in wallet that searched (none when nobody is signed in).
+export function track(kind, account, wallet = null, { by = null, send = beacon, loc = location, now = Date.now(), storage = localStorage } = {}) {
   const acc = normalizeAccount(account);
+  const who = kind === 'search' ? normalizeAccount(by) : null;
   const url = trackEndpoint(loc);
   if (!acc || !TRACK_KINDS.includes(kind) || !url) return false;
   let sent = {};
@@ -38,7 +40,7 @@ export function track(kind, account, wallet = null, { send = beacon, loc = locat
   } catch {
     sent = {};
   }
-  const key = `${kind}|${acc}`;
+  const key = kind === 'search' ? `search|${who || '-'}|${acc}` : `${kind}|${acc}`;
   if (sent[key] && now - sent[key] < RESEND_MS) return false;
   for (const k of Object.keys(sent)) if (!(now - sent[k] < RESEND_MS)) delete sent[k];
   sent[key] = now;
@@ -48,5 +50,5 @@ export function track(kind, account, wallet = null, { send = beacon, loc = locat
     /* storage blocked: still send */
   }
   const name = typeof wallet === 'string' ? wallet.replace(/[^A-Za-z0-9 ._()-]/g, '').slice(0, 40) : '';
-  return send(url, JSON.stringify({ kind, account: acc, wallet: name }));
+  return send(url, JSON.stringify(who ? { kind, account: acc, wallet: name, by: who } : { kind, account: acc, wallet: name }));
 }

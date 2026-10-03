@@ -1,17 +1,17 @@
 // Browser test suite. Open tests/index.html through any static server.
 
-import { analyzeTx, parseLog, statusKind, failureMessage, fromRpcTxStatus } from '../js/parser.js?v=4f17072b';
-import { describe, humanError } from '../js/describe.js?v=4f17072b';
-import { computePositions, positionRows, accountStats, periodSummary, positionCards, positionsOverview, sortPositionCards } from '../js/positions.js?v=4f17072b';
-import { normalizeAccount, shouldAlert, nearSize, soundKind } from '../js/rules.js?v=4f17072b';
-import { toDecimalString, toNumber, fmtNum, big, shortHash, shortAccount, fmtPct, relTime } from '../js/util.js?v=4f17072b';
-import { safeIcon, dclPrice, routePrice } from '../js/tokens.js?v=4f17072b';
-import { NEAR_ID } from '../js/config.js?v=4f17072b';
-import * as session from '../js/session.js?v=4f17072b';
-import { FollowFeed, isFeedEvent } from '../js/following.js?v=4f17072b';
-import { setLang, t, tp, dictKeys } from '../js/i18n.js?v=4f17072b';
-import * as lb from '../js/leaderboard.js?v=4f17072b';
-import { track, trackEndpoint } from '../js/track.js?v=4f17072b';
+import { analyzeTx, parseLog, statusKind, failureMessage, fromRpcTxStatus } from '../js/parser.js?v=d41ccbfd';
+import { describe, humanError } from '../js/describe.js?v=d41ccbfd';
+import { computePositions, positionRows, accountStats, periodSummary, positionCards, positionsOverview, sortPositionCards } from '../js/positions.js?v=d41ccbfd';
+import { normalizeAccount, shouldAlert, nearSize, soundKind } from '../js/rules.js?v=d41ccbfd';
+import { toDecimalString, toNumber, fmtNum, big, shortHash, shortAccount, fmtPct, relTime } from '../js/util.js?v=d41ccbfd';
+import { safeIcon, dclPrice, routePrice } from '../js/tokens.js?v=d41ccbfd';
+import { NEAR_ID } from '../js/config.js?v=d41ccbfd';
+import * as session from '../js/session.js?v=d41ccbfd';
+import { FollowFeed, isFeedEvent } from '../js/following.js?v=d41ccbfd';
+import { setLang, t, tp, dictKeys } from '../js/i18n.js?v=d41ccbfd';
+import * as lb from '../js/leaderboard.js?v=d41ccbfd';
+import { track, trackEndpoint } from '../js/track.js?v=d41ccbfd';
 
 const ACC = 'hotfrog2879.near';
 const results = [];
@@ -1110,6 +1110,15 @@ async function main() {
     eq(track('hack', 'bob.near', null, opts(5000)), false, 'неизвестный вид события');
     eq(track('search', 'bob.near', null, { ...opts(5000), loc: { protocol: 'http:', hostname: 'localhost' } }), false, 'локально не пишем');
     eq(sent.length, 3);
+    // searches carry the signed-in wallet that searched
+    ok(track('search', 'whale.near', null, { ...opts(9000), by: 'Me.near' }));
+    eq(sent[3].body.by, 'me.near');
+    eq(track('search', 'whale.near', null, { ...opts(9500), by: 'me.near' }), false, 'тот же поиск того же пользователя — не чаще раза в 6 часов');
+    ok(track('search', 'whale.near', null, { ...opts(9500), by: 'other.near' }), 'тот же адрес ищет другой пользователь');
+    ok(track('search', 'shark.near', null, opts(9500)), 'без входа');
+    eq(sent[5].body.by, undefined, 'без входа поле by не отправляется');
+    ok(track('connect', 'zed.near', null, { ...opts(9500), by: 'x.near' }));
+    eq(sent[6].body.by, undefined, 'by только у поисков');
   });
   test('рейтинг: аккаунты из внешних API проверяются на формат NEAR', () => {
     eq(lb.isTraderAccount('Alice.near'), false, 'заглавные — не канонический адрес');
