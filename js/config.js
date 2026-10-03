@@ -1,7 +1,5 @@
 // Static configuration: endpoints, known contracts and labels.
 
-export const DEFAULT_ACCOUNT = 'hotfrog2879.near';
-
 export const TX_API = 'https://tx.main.fastnear.com/v0';
 export const FASTNEAR_API = 'https://api.fastnear.com/v1';
 export const RPC_URLS = [
@@ -13,6 +11,10 @@ export const NEARLY_API = 'https://nearly.trade/api';
 export const INTEAR_PRICES = 'https://prices.intear.tech';
 export const REF_PRICES = 'https://api.ref.finance/list-token-price';
 
+// Optional FastNEAR *browser* key (see https://docs.fastnear.com/auth), restricted to your
+// site's domain. Without it the public anonymous limits apply. Never put a server key here.
+export const FASTNEAR_API_KEY = '';
+
 export const NEAR_ID = 'near'; // pseudo token id for native NEAR
 export const WNEAR = 'wrap.near';
 
@@ -20,6 +22,7 @@ export const HISTORY_PAGE = 200; // tx-api max page size
 export const POLL_PAGE = 25;
 
 export const DEFAULT_SETTINGS = {
+  theme: 'auto', // 'auto' | 'light' | 'dark'
   sound: true,
   volume: 0.6,
   notify: false,

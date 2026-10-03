@@ -9,15 +9,16 @@
   <meta name="color-scheme" content="light dark">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; worker-src 'self'; style-src 'self'; img-src 'self' data: https:; connect-src https://tx.main.fastnear.com https://api.fastnear.com https://rpc.mainnet.fastnear.com https://free.rpc.fastnear.com https://rpc.mainnet.near.org https://nearly.trade https://prices.intear.tech https://api.ref.finance; base-uri 'none'; form-action 'self'; object-src 'none'">
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
+  <script src="js/theme.js"></script>
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
   <header class="topbar">
     <div class="topbar-inner">
-      <div class="brand">
-        <span class="brand-mark" aria-hidden="true"></span>
+      <a class="brand" id="homeLink" href="./" title="На главную">
+        <svg class="mark" viewBox="0 0 24 24" aria-hidden="true"><rect class="mark-bg" x="1" y="1" width="22" height="22" rx="6"/><path class="mark-line" d="M5 12.5h3l2.2-5 3.6 9.5 2.2-4.5H19"/></svg>
         <span class="brand-name">Wallet Monitor</span>
-      </div>
+      </a>
       <form class="account-form" id="accountForm" autocomplete="off">
         <label class="sr-only" for="accountInput">Аккаунт NEAR</label>
         <input id="accountInput" class="account-input" spellcheck="false" placeholder="account.near">
@@ -35,7 +36,16 @@
     Браузер блокирует звук до первого действия на странице. <button class="link-btn" id="audioHintBtn" type="button">Включить звук</button>
   </div>
 
-  <main class="layout">
+  <section class="landing" id="landing" aria-label="Поиск кошелька" hidden>
+    <form class="landing-form" id="landingForm" autocomplete="off" role="search">
+      <label class="sr-only" for="landingInput">Адрес NEAR-кошелька</label>
+      <svg class="landing-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input id="landingInput" class="landing-input" spellcheck="false" autocapitalize="off" placeholder="Адрес кошелька">
+      <button class="btn" type="submit">Открыть</button>
+    </form>
+  </section>
+
+  <main class="layout" id="app" hidden>
     <section class="account-card" id="accountCard" aria-label="Аккаунт">
       <div class="account-head">
         <div>
@@ -101,6 +111,14 @@
   <dialog class="dialog" id="settingsDialog" aria-labelledby="settingsTitle">
     <form method="dialog" class="dialog-body" id="settingsForm">
       <h2 id="settingsTitle" class="dialog-title">Настройки</h2>
+      <label class="field">
+        <span>Тема</span>
+        <select name="theme">
+          <option value="auto">Как в системе</option>
+          <option value="light">Светлая</option>
+          <option value="dark">Тёмная</option>
+        </select>
+      </label>
       <label class="field row">
         <input type="checkbox" name="sound"> <span>Звук при новом событии</span>
       </label>

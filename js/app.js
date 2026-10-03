@@ -1,6 +1,6 @@
 // UI + live polling loop.
 
-import { DEFAULT_ACCOUNT, DEFAULT_SETTINGS, HISTORY_PAGE, POLL_PAGE, NEAR_ID, WNEAR, explorer } from './config.js';
+import { DEFAULT_SETTINGS, HISTORY_PAGE, POLL_PAGE, NEAR_ID, WNEAR, explorer } from './config.js';
 import { normalizeAccount, shouldAlert, soundKind } from './rules.js';
 import * as api from './api.js';
 import * as tokens from './tokens.js';
@@ -15,8 +15,15 @@ import {
 
 const $ = (sel) => document.querySelector(sel);
 const SETTINGS_KEY = 'nwm.settings.v1';
-const ACCOUNT_KEY = 'nwm.account.v1';
 const AUTO_HISTORY_PAGES = 3;
+// The tx API is rate-limited for anonymous clients, so it is not hammered every few seconds:
+// a cheap RPC balance check runs every `pollSec` (any tx signed by the wallet burns gas, incoming
+// NEAR changes the balance too) and the tx API is asked when that changes, plus a slow safety poll
+// that also catches token-only transfers.
+const SAFETY_POLL_MS = 15000;
+const BURST_POLL_MS = 2500;
+const BURST_WINDOW_MS = 9000;
+const MAX_PENDING_TRIES = 15;
 
 const ICONS = {
   soundOn: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H3v6h3l5 4V5z"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/><path d="M18.5 5.5a9 9 0 0 1 0 13"/></svg>',
@@ -42,8 +49,13 @@ const state = {
   errStreak: 0,
   lastErr: null,
   nextPollAt: 0,
-  nextBalanceAt: 0,
   nextFullAt: 0,
+  nextDetectAt: 0,
+  detecting: false,
+  detectErr: 0,
+  acctSig: null,
+  burstUntil: 0,
+  historyRetryMs: 5000,
   nextPriceAt: 0,
   balance: null,
   blockHeight: null,
@@ -147,7 +159,7 @@ function renderTopButtons() {
 }
 
 function updateAudioHint() {
-  $('#audioHint').hidden = !(state.settings.sound && alerts.audioState() !== 'running');
+  $('#audioHint').hidden = !(state.account && state.settings.sound && alerts.audioState() !== 'running');
 }
 
 async function setNotify(on) {
@@ -167,6 +179,7 @@ async function setNotify(on) {
 function fillSettingsForm() {
   const f = $('#settingsForm').elements;
   const s = state.settings;
+  f.theme.value = s.theme || 'auto';
   f.sound.checked = s.sound;
   f.volume.value = s.volume;
   f.alertLevel.value = s.alertLevel;
@@ -185,6 +198,8 @@ function onSettingsChange(e) {
     setNotify(f.notify.checked);
     return;
   }
+  s.theme = ['light', 'dark'].includes(f.theme.value) ? f.theme.value : 'auto';
+  applyTheme(s.theme);
   s.sound = f.sound.checked;
   s.volume = Math.min(1, Math.max(0, Number(f.volume.value) || 0));
   s.alertLevel = f.alertLevel.value;
@@ -199,19 +214,49 @@ function onSettingsChange(e) {
 
 // ---------------- account switching ----------------
 
-async function switchAccount(acc) {
-  state.generation += 1;
-  const gen = state.generation;
+function resetAccountState(acc) {
+  state.generation += 1; // drops results of requests still in flight for the previous account
   Object.assign(state, {
     account: acc, items: new Map(), resumeToken: null, totalCount: null, initialDone: false, historyLoaded: false,
     lastOkAt: 0, errStreak: 0, lastErr: null, balance: null, blockHeight: null, ftBalances: new Map(), ftLoaded: false,
     positions: new Map(), stats: null, pendingNew: 0, loadingHistory: false, polling: false, missingAccount: false,
+    detecting: false, detectErr: 0, acctSig: null, burstUntil: 0, historyRetryMs: 5000,
   });
-  storageSet(ACCOUNT_KEY, acc);
+  $('#newBanner').hidden = true;
+}
+
+function setUrl(acc, push) {
   const url = new URL(location.href);
-  url.searchParams.set('account', acc);
+  url.search = '';
   url.hash = '';
-  history.replaceState(null, '', url);
+  if (acc) url.searchParams.set('account', acc);
+  if (url.href === location.href) return;
+  if (push) history.pushState(null, '', url);
+  else history.replaceState(null, '', url);
+}
+
+function showLanding({ push = false } = {}) {
+  resetAccountState(null);
+  setUrl(null, push);
+  document.body.classList.add('is-landing');
+  $('#app').hidden = true;
+  $('#landing').hidden = false;
+  $('#feed').replaceChildren();
+  alerts.setBaseTitle('Wallet Monitor');
+  alerts.clearUnread();
+  const input = $('#landingInput');
+  input.value = '';
+  input.focus();
+}
+
+async function switchAccount(acc, { push = true } = {}) {
+  resetAccountState(acc);
+  const gen = state.generation;
+  setUrl(acc, push);
+  document.body.classList.remove('is-landing');
+  $('#landing').hidden = true;
+  $('#app').hidden = false;
+  updateAudioHint();
   $('#accountInput').value = acc;
   $('#accountId').textContent = acc;
   const links = $('#accountLinks');
@@ -229,7 +274,6 @@ async function switchAccount(acc) {
   renderSide();
   renderLive();
 
-  state.nextBalanceAt = Date.now() + 20000;
   state.nextFullAt = Date.now() + 60000;
   state.nextPriceAt = Number.MAX_SAFE_INTEGER;
   tokens.refreshNearUsd().then(() => gen === state.generation && renderHeader());
@@ -243,7 +287,8 @@ async function switchAccount(acc) {
     pages += 1;
   }
   state.initialDone = true;
-  state.nextPollAt = Date.now() + 500;
+  state.nextPollAt = Date.now() + SAFETY_POLL_MS;
+  state.nextDetectAt = Date.now() + 1000;
   state.nextPriceAt = Date.now() + 60000;
   refreshPricesAndRender();
 }
@@ -281,6 +326,7 @@ async function loadHistory(gen, first) {
     await ingest(rows, { live: false, gen });
     if (gen !== state.generation) return;
     state.historyLoaded = true;
+    state.historyRetryMs = 5000;
     state.lastErr = null;
   } catch (e) {
     if (gen !== state.generation) return;
@@ -398,11 +444,11 @@ async function poll() {
       const added = await ingest(fresh, { live: true, gen });
       if (added.length) {
         onNewItems(added);
-        state.nextBalanceAt = Math.min(state.nextBalanceAt, Date.now() + 1500);
-        state.nextFullAt = 0;
+        state.burstUntil = Date.now() + BURST_WINDOW_MS; // follow-up receipts and token balances
+        state.nextFullAt = Date.now() + 3000;
       }
     }
-    const pending = [...state.items.values()].filter((i) => i.a.pending && i.pendingTries < 60);
+    const pending = [...state.items.values()].filter((i) => i.a.pending && i.pendingTries < MAX_PENDING_TRIES);
     if (pending.length) await refreshPending(pending, gen);
     processAlerts();
     state.lastOkAt = Date.now();
@@ -416,7 +462,11 @@ async function poll() {
   } finally {
     if (gen === state.generation) {
       state.polling = false;
-      state.nextPollAt = Date.now() + (failed ? Math.min(60000, 2000 * 2 ** Math.min(state.errStreak, 5)) : state.settings.pollSec * 1000);
+      const now = Date.now();
+      const hasPending = [...state.items.values()].some((i) => i.a.pending && i.pendingTries < MAX_PENDING_TRIES);
+      state.nextPollAt = now + (failed
+        ? Math.min(60000, 3000 * 2 ** Math.min(state.errStreak, 5))
+        : now < state.burstUntil || hasPending ? BURST_POLL_MS : SAFETY_POLL_MS);
       renderLive();
       updateFooter();
     }
@@ -460,6 +510,38 @@ function processAlerts() {
   }
 }
 
+// Cheap change detector: one RPC call; a changed balance/storage means new activity.
+async function detect() {
+  if (state.detecting || !state.account) return;
+  state.detecting = true;
+  const gen = state.generation;
+  let failed = false;
+  try {
+    const v = await api.viewAccount(state.account, { spread: true });
+    if (gen !== state.generation) return;
+    const sig = `${v.amount}|${v.locked}|${v.storage_usage}`;
+    state.balance = BigInt(v.amount);
+    state.blockHeight = v.block_height;
+    if (state.acctSig && sig !== state.acctSig) {
+      state.burstUntil = Date.now() + BURST_WINDOW_MS;
+      state.nextPollAt = Math.min(state.nextPollAt, Date.now());
+    }
+    state.acctSig = sig;
+    state.detectErr = 0;
+    state.lastOkAt = Date.now();
+    renderHeader();
+    renderHoldings();
+  } catch {
+    failed = true;
+    state.detectErr += 1;
+  } finally {
+    if (gen === state.generation) {
+      state.detecting = false;
+      state.nextDetectAt = Date.now() + (failed ? Math.min(30000, 2000 * 2 ** Math.min(state.detectErr, 4)) : state.settings.pollSec * 1000);
+    }
+  }
+}
+
 async function refreshBalances(gen, full) {
   const acc = state.account;
   try {
@@ -467,6 +549,7 @@ async function refreshBalances(gen, full) {
     if (gen !== state.generation) return;
     state.balance = BigInt(v.amount);
     state.blockHeight = v.block_height;
+    state.acctSig ??= `${v.amount}|${v.locked}|${v.storage_usage}`;
   } catch (e) {
     if (gen !== state.generation) return;
     if (/does not exist|UNKNOWN_ACCOUNT/i.test(String(e.message)) && !state.missingAccount) {
@@ -507,18 +590,21 @@ async function refreshPricesAndRender() {
 
 function onTick() {
   const now = Date.now();
-  if (state.initialDone && !state.historyLoaded && !state.loadingHistory && now >= state.nextPollAt) {
-    // The first history page failed: retry it instead of polling, so old txs never alert as new.
-    state.nextPollAt = now + 5000;
-    loadHistory(state.generation, true);
-  } else if (state.initialDone && state.historyLoaded && now >= state.nextPollAt && !state.polling) {
-    poll();
+  if (state.initialDone && !state.historyLoaded) {
+    if (!state.loadingHistory && now >= state.nextPollAt) {
+      // The first history page failed: retry it (with growing pauses) instead of polling,
+      // so old transactions never alert as new ones.
+      state.nextPollAt = now + state.historyRetryMs;
+      state.historyRetryMs = Math.min(60000, state.historyRetryMs * 2);
+      loadHistory(state.generation, true);
+    }
+  } else if (state.initialDone) {
+    if (now >= state.nextDetectAt && !state.detecting) detect();
+    if (now >= state.nextPollAt && !state.polling) poll();
   }
-  if (state.account && now >= state.nextBalanceAt) {
-    const full = now >= state.nextFullAt;
-    state.nextBalanceAt = now + 20000;
-    if (full) state.nextFullAt = now + 60000;
-    refreshBalances(state.generation, full);
+  if (state.account && state.initialDone && now >= state.nextFullAt) {
+    state.nextFullAt = now + 60000;
+    refreshBalances(state.generation, true);
   }
   if (state.initialDone && now >= state.nextPriceAt) {
     state.nextPriceAt = now + 60000;
@@ -531,9 +617,9 @@ function startTicker() {
   try {
     const w = new Worker(new URL('./ticker.js', import.meta.url));
     w.onmessage = onTick;
-    w.postMessage({ cmd: 'start', ms: 1000 });
+    w.postMessage({ cmd: 'start', ms: 500 });
   } catch {
-    setInterval(onTick, 1000);
+    setInterval(onTick, 500);
   }
 }
 
@@ -548,15 +634,15 @@ function renderLive() {
     if (state.lastErr) box.classList.add('err');
     return;
   }
+  const wait = Math.max(0, Math.round((state.nextPollAt - Date.now()) / 1000));
   if (!state.historyLoaded) {
     box.classList.add('err');
-    text.textContent = 'не удалось загрузить историю · повтор…';
+    text.textContent = `API транзакций не отвечает (возможно, лимит запросов) · повтор через ${wait} с`;
     return;
   }
   if (state.lastErr && state.errStreak > 0) {
     box.classList.add('err');
-    const wait = Math.max(0, Math.round((state.nextPollAt - Date.now()) / 1000));
-    text.textContent = `нет связи с API · повтор через ${wait} с`;
+    text.textContent = `API транзакций не отвечает (возможно, лимит запросов) · повтор через ${wait} с`;
     return;
   }
   box.classList.add('ok');
@@ -932,6 +1018,23 @@ function bindUI() {
     if (acc !== state.account) switchAccount(acc);
   });
 
+  $('#landingForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const acc = normalizeAccount($('#landingInput').value);
+    if (!acc) {
+      toast('Некорректный адрес NEAR-кошелька');
+      return;
+    }
+    switchAccount(acc);
+  });
+
+  $('#homeLink').addEventListener('click', (e) => {
+    if (e.ctrlKey || e.metaKey || e.shiftKey || e.button !== 0) return; // let "open in new tab" work
+    e.preventDefault();
+    if (state.account) showLanding({ push: true });
+  });
+  window.addEventListener('popstate', route);
+
   $('#soundBtn').addEventListener('click', async () => {
     state.settings.sound = !state.settings.sound;
     saveSettings();
@@ -1009,15 +1112,39 @@ function setupSidePanel() {
   mq.addEventListener?.('change', apply);
 }
 
+function applyTheme(theme) {
+  if (theme === 'light' || theme === 'dark') document.documentElement.setAttribute('data-theme', theme);
+  else document.documentElement.removeAttribute('data-theme');
+}
+
+function accountFromUrl() {
+  const params = new URLSearchParams(location.search);
+  return normalizeAccount(params.get('account') || params.get('a') || location.hash.replace(/^#/, ''));
+}
+
+// The page opens a wallet only when its address is in the URL; otherwise it shows the search box.
+function route() {
+  const acc = accountFromUrl();
+  if (acc) {
+    if (acc !== state.account) switchAccount(acc, { push: false });
+  } else if (state.account || $('#landing').hidden) {
+    showLanding({ push: false });
+  }
+}
+
 function init() {
+  applyTheme(state.settings.theme);
+  try {
+    localStorage.removeItem('nwm.account.v1'); // older versions remembered the last wallet; we no longer do
+  } catch {
+    /* storage blocked */
+  }
+  const debug = new URLSearchParams(location.search).has('debug'); // read before routing rewrites the URL
   setupSidePanel();
   bindUI();
   startTicker();
-  const params = new URLSearchParams(location.search);
-  const fromUrl = normalizeAccount(params.get('account') || params.get('a') || location.hash.replace(/^#/, ''));
-  const acc = fromUrl || normalizeAccount(storageGet(ACCOUNT_KEY, null)) || DEFAULT_ACCOUNT;
-  switchAccount(acc);
-  if (params.has('debug')) {
+  route();
+  if (debug) {
     // Test hook: forget the newest N events so the next poll re-detects them as live ones.
     window.__nwm = {
       state,

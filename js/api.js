@@ -1,6 +1,6 @@
 // Network layer: FastNEAR tx API, NEAR RPC, FastNEAR balances, Nearly and price APIs.
 
-import { TX_API, FASTNEAR_API, RPC_URLS, NEARLY_API, INTEAR_PRICES, REF_PRICES } from './config.js';
+import { TX_API, FASTNEAR_API, RPC_URLS, NEARLY_API, INTEAR_PRICES, REF_PRICES, FASTNEAR_API_KEY } from './config.js';
 import { sleep, chunk } from './util.js';
 
 export class HttpError extends Error {
@@ -8,6 +8,11 @@ export class HttpError extends Error {
     super(`HTTP ${status} — ${url}`);
     this.status = status;
   }
+}
+
+// An optional FastNEAR browser key (see config.js) lifts the anonymous rate limit.
+function authHeaders(url) {
+  return FASTNEAR_API_KEY && /^https:\/\/[^/]*fastnear\.com\//.test(url) ? { Authorization: `Bearer ${FASTNEAR_API_KEY}` } : {};
 }
 
 export async function fetchJson(url, { method = 'GET', body, timeout = 15000, retries = 2 } = {}) {
@@ -18,7 +23,7 @@ export async function fetchJson(url, { method = 'GET', body, timeout = 15000, re
     try {
       const res = await fetch(url, {
         method,
-        headers: body ? { 'Content-Type': 'application/json' } : undefined,
+        headers: { ...(body ? { 'Content-Type': 'application/json' } : {}), ...authHeaders(url) },
         body: body ? JSON.stringify(body) : undefined,
         signal: ctrl.signal,
         cache: 'no-store',
@@ -47,7 +52,7 @@ export async function accountTxs(accountId, { limit = 200, resumeToken, fromHeig
   const body = { account_id: accountId, limit };
   if (resumeToken) body.resume_token = resumeToken;
   if (fromHeight) body.from_tx_block_height = fromHeight;
-  return fetchJson(`${TX_API}/account`, { method: 'POST', body });
+  return fetchJson(`${TX_API}/account`, { method: 'POST', body, retries: 1 });
 }
 
 export async function transactions(hashes, { concurrency = 3 } = {}) {
@@ -57,7 +62,7 @@ export async function transactions(hashes, { concurrency = 3 } = {}) {
   const worker = async () => {
     while (i < groups.length) {
       const g = groups[i++];
-      const r = await fetchJson(`${TX_API}/transactions`, { method: 'POST', body: { tx_hashes: g }, timeout: 25000 });
+      const r = await fetchJson(`${TX_API}/transactions`, { method: 'POST', body: { tx_hashes: g }, timeout: 25000, retries: 1 });
       out.push(...(r.transactions || []));
     }
   };
@@ -68,10 +73,14 @@ export async function transactions(hashes, { concurrency = 3 } = {}) {
 // ---- RPC with endpoint rotation ----
 
 let rpcIndex = 0;
-export async function rpc(method, params) {
+let rpcTurn = 0;
+// spread: start each call on the next endpoint (round-robin) to share frequent polling between nodes.
+export async function rpc(method, params, { spread = false } = {}) {
   let lastErr;
+  // Only the first two endpoints are fast enough for the frequent check; the rest are fallbacks.
+  const start = spread ? rpcTurn++ % Math.min(2, RPC_URLS.length) : rpcIndex;
   for (let n = 0; n < RPC_URLS.length; n++) {
-    const url = RPC_URLS[(rpcIndex + n) % RPC_URLS.length];
+    const url = RPC_URLS[(start + n) % RPC_URLS.length];
     try {
       const r = await fetchJson(url, { method: 'POST', body: { jsonrpc: '2.0', id: 'm', method, params }, timeout: 10000, retries: 1 });
       if (r.error) {
@@ -81,7 +90,7 @@ export async function rpc(method, params) {
         e.rpc = true;
         throw e;
       }
-      rpcIndex = (rpcIndex + n) % RPC_URLS.length;
+      if (!spread) rpcIndex = (start + n) % RPC_URLS.length;
       return r.result;
     } catch (e) {
       lastErr = e;
@@ -108,8 +117,8 @@ export async function viewFunction(contract, method, args = {}) {
   return JSON.parse(text);
 }
 
-export async function viewAccount(accountId) {
-  return rpc('query', { request_type: 'view_account', finality: 'final', account_id: accountId });
+export async function viewAccount(accountId, opts) {
+  return rpc('query', { request_type: 'view_account', finality: 'final', account_id: accountId }, opts);
 }
 
 export async function accountFull(accountId) {

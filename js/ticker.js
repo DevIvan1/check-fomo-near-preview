@@ -5,5 +5,5 @@ self.onmessage = (e) => {
   const { cmd, ms } = e.data || {};
   if (timer) clearInterval(timer);
   timer = null;
-  if (cmd === 'start') timer = setInterval(() => self.postMessage('tick'), Math.max(1000, ms | 0));
+  if (cmd === 'start') timer = setInterval(() => self.postMessage('tick'), Math.max(250, ms | 0));
 };

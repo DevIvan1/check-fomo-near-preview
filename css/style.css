@@ -89,8 +89,37 @@ button { font: inherit; color: inherit; }
   max-width: 1080px; margin: 0 auto; padding: 10px 16px;
   display: flex; align-items: center; gap: 12px;
 }
-.brand { display: flex; align-items: center; gap: 8px; font-weight: 600; white-space: nowrap; }
-.brand-mark { width: 18px; height: 18px; border-radius: 5px; background: var(--text); display: inline-block; }
+.brand {
+  display: flex; align-items: center; gap: 8px; font-weight: 600; white-space: nowrap;
+  text-decoration: none; color: var(--text); border-radius: 8px; padding: 4px 6px; margin-left: -6px;
+}
+.brand:hover { background: var(--hover); }
+.brand:focus-visible { outline: 2px solid color-mix(in srgb, var(--text) 30%, transparent); }
+.mark { width: 22px; height: 22px; flex: none; display: block; }
+.mark-bg { fill: var(--text); }
+.mark-line { fill: none; stroke: var(--bg); stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ---------- landing: just a search box in the middle ---------- */
+.landing { min-height: calc(100vh - 140px); display: grid; place-items: center; padding: 16px; }
+.landing-form {
+  width: min(560px, 100%); display: flex; align-items: center; gap: 8px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 6px 6px 6px 14px;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.04);
+}
+.landing-form:focus-within { border-color: color-mix(in srgb, var(--text) 35%, var(--line)); }
+.landing-icon { width: 18px; height: 18px; flex: none; fill: none; stroke: var(--muted); stroke-width: 2; stroke-linecap: round; }
+.landing-input {
+  flex: 1; min-width: 0; height: 40px; border: 0; outline: 0; background: transparent; color: var(--text);
+  font: 15px var(--mono);
+}
+.landing-form .btn { height: 40px; border-radius: 10px; }
+body.is-landing .account-form,
+body.is-landing #soundBtn,
+body.is-landing #notifyBtn,
+body.is-landing .audio-hint { display: none; }
+body.is-landing .top-actions { margin-left: auto; }
+body.is-landing .footer { display: none; }
+@media (max-width: 520px) { body:not(.is-landing) .brand-name { display: none; } }
 .account-form { display: flex; gap: 6px; flex: 1; min-width: 0; max-width: 420px; margin-left: auto; }
 .account-input {
   flex: 1; min-width: 0; height: 34px; padding: 0 12px;
@@ -144,7 +173,6 @@ button { font: inherit; color: inherit; }
   .side-wrap[open] .side-summary { margin-bottom: 12px; }
   .side-wrap[open] .side-summary::after { content: '▴'; }
   .feed-toolbar { margin-top: 0; }
-  .brand-name { display: none; }
 }
 
 /* ---------- account card ---------- */

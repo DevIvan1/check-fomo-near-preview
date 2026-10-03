@@ -125,7 +125,7 @@ function renderTitle() {
 }
 
 function setFavicon(dot) {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="7" fill="#1d1d1f"/><path d="M9 21V11l7 7 7-7v10" fill="none" stroke="#f5f5f7" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>${dot ? '<circle cx="25" cy="7" r="6" fill="#d9534f" stroke="#fff" stroke-width="1.5"/>' : ''}</svg>`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><rect x="1" y="1" width="22" height="22" rx="6" fill="#1c1c1e"/><path d="M5 12.5h3l2.2-5 3.6 9.5 2.2-4.5H19" fill="none" stroke="#f5f5f7" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>${dot ? '<circle cx="19.5" cy="4.5" r="4.5" fill="#d9534f" stroke="#fff" stroke-width="1.2"/>' : ''}</svg>`;
   let link = document.querySelector('link[rel="icon"]');
   if (!link) {
     link = document.createElement('link');
