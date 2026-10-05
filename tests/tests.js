@@ -1,17 +1,18 @@
 // Browser test suite. Open tests/index.html through any static server.
 
-import { analyzeTx, parseLog, statusKind, failureMessage, fromRpcTxStatus } from '../js/parser.js?v=cebde690';
-import { describe, humanError } from '../js/describe.js?v=cebde690';
-import { computePositions, positionRows, accountStats, periodSummary, positionCards, positionsOverview, sortPositionCards } from '../js/positions.js?v=cebde690';
-import { normalizeAccount, shouldAlert, nearSize, soundKind } from '../js/rules.js?v=cebde690';
-import { toDecimalString, toNumber, fmtNum, big, shortHash, shortAccount, fmtPct, relTime } from '../js/util.js?v=cebde690';
-import { safeIcon, dclPrice, routePrice } from '../js/tokens.js?v=cebde690';
-import { NEAR_ID } from '../js/config.js?v=cebde690';
-import * as session from '../js/session.js?v=cebde690';
-import { FollowFeed, isFeedEvent } from '../js/following.js?v=cebde690';
-import { setLang, t, tp, dictKeys } from '../js/i18n.js?v=cebde690';
-import * as lb from '../js/leaderboard.js?v=cebde690';
-import { track, trackEndpoint } from '../js/track.js?v=cebde690';
+import { analyzeTx, parseLog, statusKind, failureMessage, fromRpcTxStatus } from '../js/parser.js?v=b7d0b915';
+import { describe, humanError } from '../js/describe.js?v=b7d0b915';
+import { computePositions, positionRows, accountStats, periodSummary, positionCards, positionsOverview, sortPositionCards } from '../js/positions.js?v=b7d0b915';
+import { normalizeAccount, shouldAlert, nearSize, soundKind } from '../js/rules.js?v=b7d0b915';
+import { toDecimalString, toNumber, fmtNum, big, shortHash, shortAccount, fmtPct, relTime } from '../js/util.js?v=b7d0b915';
+import { safeIcon, dclPrice, routePrice } from '../js/tokens.js?v=b7d0b915';
+import { NEAR_ID } from '../js/config.js?v=b7d0b915';
+import * as session from '../js/session.js?v=b7d0b915';
+import { FollowFeed, isFeedEvent } from '../js/following.js?v=b7d0b915';
+import { setLang, t, tp, dictKeys } from '../js/i18n.js?v=b7d0b915';
+import * as lb from '../js/leaderboard.js?v=b7d0b915';
+import { track, trackEndpoint } from '../js/track.js?v=b7d0b915';
+import { pointPrice, orderTokens, orderView, orderEventKind, sortOrders } from '../js/orders.js?v=b7d0b915';
 
 const ACC = 'hotfrog2879.near';
 const results = [];
@@ -736,7 +737,7 @@ async function main() {
     eq(describe(A('FUNDING'), ctx()).title, 'Received 385.07 NEAR from a9c866…c61d');
     eq(describe(A('ACCOUNT_CREATED'), ctx()).title, 'Account created');
     for (const key of Object.keys(fx).filter((k) => !k.startsWith('RPC_'))) {
-      const signer = key.startsWith('V2_') || key === 'STOP_POINT_NOFILL' ? fx[key].transaction.signer_id : ACC;
+      const signer = key.startsWith('V2_') || key.startsWith('LIMIT_') || key === 'STOP_POINT_NOFILL' ? fx[key].transaction.signer_id : ACC;
       const d = describe(analyzeTx(fx[key], signer), ctx());
       ok(!/[А-Яа-яЁё]/.test(JSON.stringify(d)), key + ': в английском посте остался русский текст');
     }
@@ -1126,6 +1127,98 @@ async function main() {
     eq(lb.isTraderAccount('javascript:alert(1)'), false);
     const rows = lb.mergeWindow({ listRows: [{ account: '<b>x</b>', pnl_usd: 1e6, trades: 1, basis_usd: 1 }, { account: 'ok.near', pnl_usd: 5, trades: 1, basis_usd: 1 }] }, 0);
     eq(rows.map((r) => r.account).join(), 'ok.near');
+  });
+
+  // ---------- limit orders (Rhea DCL) ----------
+  const NEARLY = 'nearly-993927.nearlytrade.near';
+  const NEARLY_SUPPLY = 950733362205915255721299420n;
+  const ordCtx = (prices = {}) => ({
+    decimals: (id) => ({ [NEARLY]: 18, 'diarhea.nearlytrade.near': 18, 'token.rhealab.near': 18, 'trade-2.nearlytrade.near': 18 })[id] ?? null,
+    priceNear: (id) => (id in prices ? prices[id] : null),
+    supply: (id) => (id === NEARLY ? NEARLY_SUPPLY : null),
+  });
+  test('лимитки: цена по point DCL и какой токен в паре торгуется', () => {
+    approx(pointPrice(0, 24, 24), 1, 1e-12);
+    approx(pointPrice(68000, 18, 24), 0.000897542, 1e-9);
+    eq(orderTokens(`${NEARLY}|wrap.near|10000`).token, NEARLY);
+    eq(orderTokens('wrap.near|zecvsnear-b1615e.launchpad.justhoot.near|10000').token, 'zecvsnear-b1615e.launchpad.justhoot.near', 'wNEAR — всегда котировка');
+    eq(orderTokens('diarhea.nearlytrade.near|token.rhealab.near|10000').quote, 'token.rhealab.near');
+    eq(orderTokens('zec.omft.near|zectardio.nearlytrade.near|10000').token, 'zectardio.nearlytrade.near', 'мем, а не ZEC');
+    eq(orderTokens('bad'), null);
+  });
+  test('лимитки: покупка NEARLY — цена, капа, расстояние до исполнения', () => {
+    const order = { order_id: 'x#1', pool_id: `${NEARLY}|wrap.near|10000`, point: 68000, sell_token: 'wrap.near', buy_token: NEARLY,
+      original_amount: '500000000000000000000000000', remain_amount: '500000000000000000000000000', bought_amount: '0', cancel_amount: '0', created_at: '1791201381880933424' };
+    const now = pointPrice(69147, 18, 24);
+    const v = orderView(order, ordCtx({ [NEARLY]: now }));
+    eq(v.side, 'buy');
+    approx(v.priceNear, 0.000897542, 1e-9);
+    approx(v.mcNear, 853323.2, 1, 'капа = цена × общее предложение');
+    approx(v.distancePct, -10.836, 0.01, 'цена должна упасть ~10.8%');
+    approx(v.left, 500, 1e-9);
+    approx(v.sizeNear, 500, 1e-9);
+    eq(v.filledPct, 0);
+    eq(v.createdMs, 1791201381880);
+    const noPrice = orderView(order, ordCtx());
+    eq(noPrice.distancePct, null, 'без текущей цены — неизвестно');
+    ok(noPrice.mcNear > 0, 'капа лимитки известна и без текущей цены');
+  });
+  test('лимитки: продажа за RHEA, частичное исполнение, неизвестные decimals', () => {
+    const order = { pool_id: 'diarhea.nearlytrade.near|token.rhealab.near|10000', point: -44200, sell_token: 'diarhea.nearlytrade.near', buy_token: 'token.rhealab.near',
+      original_amount: '1000000000000000000000', remain_amount: '250000000000000000000', bought_amount: '9000000000000000000', cancel_amount: '0' };
+    const v = orderView(order, ordCtx({ 'token.rhealab.near': 0.1 }));
+    eq(v.side, 'sell');
+    approx(v.priceQuote, 0.0120369, 1e-6, 'в RHEA');
+    approx(v.priceNear, 0.00120369, 1e-7, 'через цену RHEA в NEAR');
+    approx(v.filledPct, 75, 1e-9);
+    approx(v.left, 250, 1e-9);
+    eq(v.mcNear, null, 'без общего предложения капы нет');
+    eq(orderView({ ...order, pool_id: 'unknown.near|wrap.near|100', sell_token: 'unknown.near', buy_token: 'wrap.near' }, ordCtx()), null);
+    eq(orderView(null, ordCtx()), null);
+  });
+  test('лимитки: вид события и порядок списка', () => {
+    eq(orderEventKind([{ event: 'order_added' }]), 'placed');
+    eq(orderEventKind([{ event: 'order_cancelled' }, { event: 'order_completed' }]), 'cancelled', 'отмена тоже шлёт order_completed');
+    eq(orderEventKind([{ event: 'order_completed' }]), 'filled');
+    eq(orderEventKind([]), null);
+    eq(sortOrders([{ createdMs: 1 }, null, { createdMs: 3 }, { createdMs: 2 }]).map((v) => v.createdMs).join(), '3,2,1');
+  });
+  test('лимитки в ленте: выставил покупку и отменил продажу (настоящие транзакции)', () => {
+    const buy = analyzeTx(fx.LIMIT_ORDER_BUY, 'nadayno.near');
+    eq(buy.kind, 'order');
+    const c = ctx({ supply: (id) => (id === NEARLY ? NEARLY_SUPPLY : null), priceNear: (id) => (id === NEARLY ? pointPrice(69147, 18, 24) : null) });
+    setLang('ru');
+    let d = describe(buy, c);
+    has(d.title, 'Лимитка на покупку NEARLY на 500 NEAR при капе $');
+    eq(d.icon.token, NEARLY);
+    eq(d.tags[0], 'лимитка');
+    has(d.lines.find((l) => l.label === 'Цена лимитки').value, '0,0008975 NEAR за 1 NEARLY');
+    has(d.lines.find((l) => l.label === 'Капа сейчас').note, '−11%');
+    setLang('en');
+    d = describe(buy, c);
+    has(d.title, 'Limit buy: NEARLY for 500 NEAR at $');
+    has(d.title, 'MC');
+    const cancel = analyzeTx(fx.LIMIT_ORDER_CANCEL, 'fhsj1b6n92gforbwnc82.near');
+    eq(cancel.kind, 'order');
+    const dc = describe(cancel, ctx({ meta: (id) => (id === 'trade-2.nearlytrade.near' ? { symbol: 'TRADE', decimals: 18 } : id === NEAR_ID ? { symbol: 'NEAR', decimals: 24 } : META[id] || null) }));
+    has(dc.title, 'Cancelled a limit sell of TRADE');
+    eq(dc.lines.find((l) => l.label === 'Filled').value, 'nothing filled');
+    setLang('ru');
+    const unknown = describe(cancel, ctx());
+    has(unknown.title, 'Лимитный ордер на Rhea DCL', 'без decimals — прежний общий текст');
+    setLang('en');
+  });
+
+  test('лимитки в ленте: старый пост о лимитке, которой уже нет среди открытых', () => {
+    setLang('en');
+    const buy = analyzeTx(fx.LIMIT_ORDER_BUY, 'nadayno.near');
+    const base = { supply: (id) => (id === NEARLY ? NEARLY_SUPPLY : null), priceNear: (id) => (id === NEARLY ? pointPrice(69147, 18, 24) : null) };
+    const gone = describe(buy, ctx({ ...base, orderOpen: () => false }));
+    eq(gone.lines.find((l) => l.label === 'Status').value, 'no longer open: filled or cancelled');
+    eq(gone.lines.some((l) => l.label === 'MC now'), false, 'без «до исполнения» у закрытой лимитки');
+    const open = describe(buy, ctx({ ...base, orderOpen: (id) => id === 'nearly-993927.nearlytrade.near|wrap.near|10000#11037' }));
+    ok(open.lines.some((l) => l.label === 'MC now'), 'открытая — с текущей капой');
+    eq(open.lines.some((l) => l.label === 'Status'), false);
   });
 
   await Promise.all(pendingTests);

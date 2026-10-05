@@ -10,8 +10,8 @@
   <meta name="author" content="@Checker1crypto (https://x.com/Checker1crypto)">
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; worker-src 'self'; style-src 'self'; img-src 'self' data: https:; connect-src 'self' https://check-fomo-near.vercel.app https://tx.main.fastnear.com https://api.fastnear.com https://rpc.mainnet.fastnear.com https://near.drpc.org https://rpc.shitzuapes.xyz https://free.rpc.fastnear.com https://rpc.mainnet.near.org https://archival-rpc.mainnet.fastnear.com https://api.nearblocks.io https://nearly.trade https://prices.intear.tech https://events-v3.intear.tech https://api.ref.finance; base-uri 'none'; form-action 'self'; object-src 'none'">
   <link rel="icon" type="image/svg+xml" href="favicon.svg">
-  <script src="js/boot.js?v=cebde690"></script>
-  <link rel="stylesheet" href="css/style.css?v=cebde690">
+  <script src="js/boot.js?v=b7d0b915"></script>
+  <link rel="stylesheet" href="css/style.css?v=b7d0b915">
 </head>
 <body>
   <header class="topbar">
@@ -112,6 +112,7 @@
             <div class="tabs" role="tablist" id="tabs">
               <button role="tab" data-filter="all" aria-selected="true"><span data-i18n="tab.all">All</span> <span class="count" data-count="all"></span></button>
               <button role="tab" data-filter="positions" aria-selected="false"><span data-i18n="tab.positions">Positions</span> <span class="count" data-count="positions"></span></button>
+              <button role="tab" data-filter="orders" aria-selected="false"><span data-i18n="tab.orders">Orders</span> <span class="count" data-count="orders"></span></button>
               <button role="tab" data-filter="trades" aria-selected="false"><span data-i18n="tab.trades">Trades</span> <span class="count" data-count="trades"></span></button>
               <button role="tab" data-filter="transfers" aria-selected="false"><span data-i18n="tab.transfers">Transfers</span> <span class="count" data-count="transfers"></span></button>
               <button role="tab" data-filter="payouts" aria-selected="false"><span data-i18n="tab.payouts">Payouts</span> <span class="count" data-count="payouts"></span></button>
@@ -135,6 +136,7 @@
           </div>
           <section class="summary" id="summaryView" aria-live="polite" hidden></section>
           <section class="positions-view" id="positionsView" aria-live="polite" hidden></section>
+          <section class="positions-view orders-view" id="ordersView" aria-live="polite" hidden></section>
         </section>
 
         <aside class="side-col" aria-label="Summary" data-i18n-aria="summary">
@@ -242,6 +244,6 @@
     <div class="sources muted" data-i18n="sources">Data: FastNEAR (transactions, balances), NEAR RPC, Nearly API, Intear (prices, swaps), Rhea (prices, pools). Everything is calculated in your browser. The site keeps a usage log: wallet addresses that connect or are searched here (no IP, no cookies).</div>
   </footer>
 
-  <script type="module" src="js/app.js?v=cebde690"></script>
+  <script type="module" src="js/app.js?v=b7d0b915"></script>
 </body>
 </html>

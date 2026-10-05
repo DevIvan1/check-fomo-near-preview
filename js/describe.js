@@ -1,9 +1,10 @@
 // Builds the human-readable post for an analysed transaction (texts come from i18n).
 // Pure apart from the current language: everything external comes through `ctx`.
 
-import { NEAR_ID, WNEAR, contractName, tokenFamily, explorer } from './config.js?v=cebde690';
-import { toNumber, toDecimalString, fmtNum, fmtUsd, fmtPct, shortAccount, shortHash, absBig, isImplicit } from './util.js?v=cebde690';
-import { t, tp, getLocale } from './i18n.js?v=cebde690';
+import { NEAR_ID, WNEAR, contractName, tokenFamily, explorer } from './config.js?v=b7d0b915';
+import { toNumber, toDecimalString, fmtNum, fmtUsd, fmtUsdCompact, fmtPct, shortAccount, shortHash, absBig, isImplicit } from './util.js?v=b7d0b915';
+import { orderView, orderEventKind } from './orders.js?v=b7d0b915';
+import { t, tp, getLocale } from './i18n.js?v=b7d0b915';
 
 const GLYPHS = {
   transfer_in: '↓', transfer_out: '↑', ft_in: '↓', ft_out: '↑', receive_multi: '↓', debit: '↑',
@@ -139,6 +140,50 @@ function pnlLine(a, tr, now, f, ctx) {
   const pnl = value - spent;
   const pct = spent ? (pnl / spent) * 100 : null;
   return { label: t('l.pnl'), value: pnlValue(pct, pnl), note: usdText(pnl, ctx), tone: pnl >= 0 ? 'up' : 'down', dyn: true, live: true };
+}
+
+// A limit order on Rhea DCL: placed / cancelled / filled, at what price and market cap.
+// Returns false when the order cannot be read (unknown decimals), so the generic text is used.
+function describeOrder(a, ctx, f, out, main) {
+  const state = orderEventKind(a.dclEvents);
+  const name = { placed: 'order_added', cancelled: 'order_cancelled', filled: 'order_completed' }[state];
+  const ev = a.dclEvents.find((e) => e.event === name);
+  const v = ev?.data?.[0] ? orderView(ev.data[0], { decimals: f.dec, priceNear: ctx.priceNear, supply: (tk) => (ctx.supply ? ctx.supply(tk) : null) }) : null;
+  if (!v) return false;
+  const mc = (near) => (near === null || near === undefined ? null : ctx.nearUsd ? fmtUsdCompact(near * ctx.nearUsd) : `${fmtNum(near)} NEAR`);
+  const sym = f.sym(v.token);
+  const symOf = (tk) => (tk === WNEAR ? 'NEAR' : f.sym(tk)); // wNEAR in an order is the user's NEAR
+  const amount = v.side === 'sell' ? `${fmtNum(v.original)} ${sym}` : `${fmtNum(v.original)} ${symOf(v.quote)}`;
+  const key = { placed: 't.orderPlaced', cancelled: 't.orderCancelled', filled: 't.orderFilled' }[state];
+  out.title = t(key, { side: v.side, sym, amt: amount, mc: mc(v.mcNear) });
+  out.icon = { token: v.token };
+  out.tags.push(t('tag.limit'));
+  if (v.priceNear !== null) {
+    main.push({
+      label: t('l.limitPrice'), value: t('priceVal', { p: fmtNum(v.priceNear, { compact: false }), sym }),
+      note: ctx.nearUsd ? `≈ ${fmtUsd(v.priceNear * ctx.nearUsd)}` : '',
+    });
+  } else {
+    main.push({ label: t('l.limitPrice'), value: `${fmtNum(v.priceQuote, { compact: false })} ${symOf(v.quote)} / ${sym}` });
+  }
+  if (v.mcNear !== null) main.push({ label: t('l.limitMc'), value: mc(v.mcNear) });
+  main.push({ label: t('l.orderAmount'), value: amount, note: v.side === 'sell' && v.sizeNear !== null && state === 'placed' ? `≈ ${fmtNum(v.sizeNear)} NEAR` : '' });
+  // ctx.orderOpen(id): true / false (no longer among the wallet's open orders) / null (unknown)
+  const open = ctx.orderOpen ? ctx.orderOpen(v.id) : null;
+  if (state === 'placed' && open === false) main.push({ label: t('l.orderStatus'), value: t('ord.closedNow') });
+  if (state === 'placed' && open !== false && v.nowMcNear !== null) {
+    main.push({
+      label: t('l.mcNow'), value: mc(v.nowMcNear), live: true, dyn: true,
+      note: v.distancePct !== null ? t('ord.toFill', fmtPct(v.distancePct)) : '',
+      tone: v.distancePct === null ? '' : v.distancePct >= 0 ? 'up' : 'down',
+    });
+  }
+  if (state !== 'placed') {
+    main.push({ label: t('l.filled'), value: v.bought ? `${fmtNum(v.bought)} ${symOf(v.buyToken)}` : t('ord.notFilled') });
+  }
+  main.push({ label: t('l.pool'), value: v.poolId, mono: true });
+  out.csv = { side: v.side, token: v.token };
+  return true;
 }
 
 export function describe(a, ctx) {
@@ -390,6 +435,8 @@ export function describe(a, ctx) {
       out.title = t('t.accountDeleted', shortAccount(a.beneficiary));
       break;
     case 'order':
+      if (describeOrder(a, ctx, f, out, main)) break;
+    // falls through: an order event that cannot be read is shown like before
     case 'liquidity': {
       const names = [...new Set(a.dclEvents.map((e) => e.event))].join(', ');
       out.title = t(a.kind === 'order' ? 't.order' : 't.liquidity', names);

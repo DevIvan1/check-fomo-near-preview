@@ -1,22 +1,23 @@
 // UI + live polling loop.
 
-import { DEFAULT_SETTINGS, HISTORY_PAGE, POLL_PAGE, NEAR_ID, WNEAR, explorer } from './config.js?v=cebde690';
-import { normalizeAccount, shouldAlert, soundKind } from './rules.js?v=cebde690';
-import * as api from './api.js?v=cebde690';
-import * as tokens from './tokens.js?v=cebde690';
-import { analyzeTx } from './parser.js?v=cebde690';
-import { describe, tokenLinks } from './describe.js?v=cebde690';
-import { computePositions, periodSummary, positionCards, positionsOverview, sortPositionCards } from './positions.js?v=cebde690';
-import * as alerts from './alerts.js?v=cebde690';
+import { DEFAULT_SETTINGS, HISTORY_PAGE, POLL_PAGE, NEAR_ID, WNEAR, DCL_CONTRACT, explorer } from './config.js?v=b7d0b915';
+import { normalizeAccount, shouldAlert, soundKind } from './rules.js?v=b7d0b915';
+import * as api from './api.js?v=b7d0b915';
+import * as tokens from './tokens.js?v=b7d0b915';
+import { analyzeTx } from './parser.js?v=b7d0b915';
+import { describe, tokenLinks } from './describe.js?v=b7d0b915';
+import { computePositions, periodSummary, positionCards, positionsOverview, sortPositionCards } from './positions.js?v=b7d0b915';
+import * as alerts from './alerts.js?v=b7d0b915';
 import {
   fmtNum, fmtUsd, fmtUsdCompact, fmtPct, fmtDateShort, relTime, fmtTime, fmtDateTime, dayLabel, toNumber, shortAccount,
   storageGet, storageSet, toDecimalString,
-} from './util.js?v=cebde690';
-import { t, tp, setLang, getLang, getLocale, applyStatic } from './i18n.js?v=cebde690';
-import * as session from './session.js?v=cebde690';
-import { FollowFeed } from './following.js?v=cebde690';
-import { Leaderboard, WINDOWS as LB_WINDOWS } from './leaderboard.js?v=cebde690';
-import { track } from './track.js?v=cebde690';
+} from './util.js?v=b7d0b915';
+import { t, tp, setLang, getLang, getLocale, applyStatic } from './i18n.js?v=b7d0b915';
+import * as session from './session.js?v=b7d0b915';
+import { FollowFeed } from './following.js?v=b7d0b915';
+import { Leaderboard, WINDOWS as LB_WINDOWS } from './leaderboard.js?v=b7d0b915';
+import { track } from './track.js?v=b7d0b915';
+import { orderView, orderTokens, sortOrders, DCL_ORDERS_METHOD } from './orders.js?v=b7d0b915';
 
 const $ = (sel) => document.querySelector(sel);
 const SETTINGS_KEY = 'nwm.settings.v1';
@@ -339,6 +340,7 @@ function resetAccountState(acc) {
     positions: new Map(), pendingNew: 0, loadingHistory: false, polling: false, missingAccount: false,
     detecting: false, detectErr: 0, acctSig: null, burstUntil: 0, historyRetryMs: 5000,
     nextLiveAt: 0, liveBusy: false, liveTicks: 0,
+    orders: [], ordersStatus: 'idle', ordersBusy: false,
   });
   $('#newBanner').hidden = true;
 }
@@ -406,6 +408,7 @@ async function switchAccount(acc, { push = true } = {}) {
   state.nextPriceAt = Number.MAX_SAFE_INTEGER;
   tokens.refreshNearUsd().then(() => gen === state.generation && renderHeader());
   refreshBalances(gen, true);
+  loadOrders(gen);
   await loadHistory(gen, true);
   if (gen !== state.generation) return;
   let pages = 1;
@@ -479,6 +482,10 @@ async function enrich(analyses) {
   for (const a of analyses) {
     a.tokens.forEach((t) => ids.add(t));
     if (a.launchId !== undefined && a.launchId !== null) launches.add(a.launchId);
+    for (const pool of orderPoolsOf(a)) {
+      const p = orderTokens(pool);
+      if (p) [p.x, p.y].forEach((t) => ids.add(t));
+    }
   }
   await withTimeout(Promise.all([tokens.ensureMeta(ids), tokens.ensureLaunches(launches)]), 12000);
   const extra = new Set([...launches].map((l) => tokens.launchToken(l)).filter(Boolean));
@@ -493,6 +500,7 @@ function describeCtx() {
     launchToken: tokens.launchToken,
     supply: tokens.supply,
     positionOpen,
+    orderOpen: (id) => (state.ordersStatus === 'ready' && id ? state.orders.some((o) => o.order_id === id) : null),
     cycleStats: (token, id) => (id === undefined || id === null ? null : state.positions.get(token)?.cycles?.[id] || null),
   };
 }
@@ -540,6 +548,7 @@ async function ingest(rows, { live, gen }) {
   }
   await enrich(added.map((i) => i.a));
   if (gen !== state.generation) return [];
+  if (state.initialDone && added.some((i) => i.a.kind === 'order')) loadOrders(gen);
   recompute();
   renderFeed();
   renderSide();
@@ -725,7 +734,7 @@ async function refreshBalances(gen, full) {
 
 async function refreshPricesAndRender() {
   const gen = state.generation;
-  const set = new Set([...state.positions.keys(), ...state.ftBalances.keys()]);
+  const set = new Set([...state.positions.keys(), ...state.ftBalances.keys(), ...orderTokenSet()]);
   await tokens.refreshNearUsd();
   await withTimeout(tokens.refreshPrices(set), 15000);
   if (gen !== state.generation) return;
@@ -754,6 +763,12 @@ async function livePnlTick() {
       if (pools.length) tokenPools.set(tok, [...new Set([...(tokenPools.get(tok) || []), ...pools])]);
       else other.add(tok);
     }
+    for (const pool of [...state.orders.map((o) => o.pool_id), ...[...state.items.values()].flatMap((it) => orderPoolsOf(it.a))]) {
+      const p = orderTokens(pool);
+      if (!p) continue;
+      if (p.x === WNEAR || p.y === WNEAR) tokenPools.set(p.token, [...new Set([...(tokenPools.get(p.token) || []), pool])]);
+      else [p.token, p.quote].forEach((t) => other.add(t));
+    }
     for (const tok of tokenPools.keys()) other.delete(tok);
     if (tokenPools.size) await tokens.refreshPoolPrices(tokenPools, api.viewFunction);
     if (other.size && state.liveTicks % 5 === 0) await withTimeout(tokens.refreshPrices(other), 8000);
@@ -767,11 +782,12 @@ async function livePnlTick() {
   }
 }
 
-// Re-describes only the trade posts of the given tokens and swaps changed ones in place.
+// Re-describes only the trade and limit-order posts of the given tokens and swaps changed ones in place.
 function refreshLiveLines(tokenSet) {
   const ctx = describeCtx();
   for (const it of state.items.values()) {
-    if (it.a.kind !== 'trade' || !tokenSet.has(it.a.trade.token)) continue;
+    const tok = it.a.kind === 'trade' ? it.a.trade.token : it.a.kind === 'order' ? orderTokens(orderPoolsOf(it.a)[0])?.token : null;
+    if (!tok || !tokenSet.has(tok)) continue;
     const d = describe(it.a, ctx);
     const sig = JSON.stringify(d);
     if (sig === it.sig) continue;
@@ -784,6 +800,109 @@ function refreshLiveLines(tokenSet) {
   renderPnlBoard();
   if (state.filter === 'summary') renderSummary();
   if (state.filter === 'positions') renderPositionsView();
+  if (state.filter === 'orders') renderOrdersView();
+}
+
+// ---------------- limit orders (Rhea DCL) ----------------
+
+// DCL pools named in a limit-order post.
+function orderPoolsOf(a) {
+  if (a?.kind !== 'order' || !Array.isArray(a.dclEvents)) return [];
+  return [...new Set(a.dclEvents.flatMap((e) => (e.data || []).map((d) => d && d.pool_id)).filter(Boolean))];
+}
+
+function orderTokenSet() {
+  const set = new Set();
+  for (const pool of [...state.orders.map((o) => o.pool_id), ...[...state.items.values()].flatMap((it) => orderPoolsOf(it.a))]) {
+    const p = orderTokens(pool);
+    if (p) [p.token, p.quote].filter((t) => t !== WNEAR).forEach((t) => set.add(t));
+  }
+  return set;
+}
+
+function orderCtx() {
+  return {
+    decimals: tokens.decimals,
+    priceNear: (tk) => (tk === NEAR_ID || tk === WNEAR ? 1 : tokens.priceNear(tk)),
+    supply: tokens.supply,
+  };
+}
+
+// The wallet's open limit orders, straight from the DCL contract.
+async function loadOrders(gen) {
+  const acc = state.account;
+  if (!acc || state.ordersBusy) return;
+  state.ordersBusy = true;
+  try {
+    const list = await api.viewFunction(DCL_CONTRACT, DCL_ORDERS_METHOD, { account_id: acc });
+    if (gen !== state.generation) return;
+    const orders = (Array.isArray(list) ? list : []).filter((o) => o && o.owner_id === acc && orderTokens(o.pool_id));
+    const ids = new Set(orders.flatMap((o) => {
+      const p = orderTokens(o.pool_id);
+      return [p.x, p.y];
+    }));
+    await withTimeout(tokens.ensureMeta(ids), 10000);
+    state.orders = orders; // prices for them come with the next live tick
+    state.ordersStatus = 'ready';
+    state.nextLiveAt = 0;
+    refreshLiveLines(orderTokenSet()); // order posts: still open or not
+  } catch (e) {
+    if (gen === state.generation) state.ordersStatus = state.orders.length ? 'ready' : 'error';
+  } finally {
+    if (gen === state.generation) {
+      state.ordersBusy = false;
+      renderCounts();
+      if (state.filter === 'orders') renderOrdersView();
+    }
+  }
+}
+
+function renderOrdersView() {
+  const box = $('#ordersView');
+  if (!box) return;
+  const note = el('p', { class: 'panel-note muted small' }, t('ord.note'));
+  if (state.ordersStatus === 'idle' || (state.ordersStatus === 'loading' && !state.orders.length)) {
+    box.replaceChildren(el('div', { class: 'pos-empty' }, t('ord.loading')));
+    return;
+  }
+  if (state.ordersStatus === 'error') {
+    box.replaceChildren(el('div', { class: 'pos-empty' }, t('ord.failed'), ' ',
+      el('button', { type: 'button', class: 'link-btn', onclick: () => loadOrders(state.generation) }, t('ord.retry'))));
+    return;
+  }
+  const ctx = orderCtx();
+  const views = sortOrders(state.orders.map((o) => orderView(o, ctx)));
+  if (!views.length) {
+    box.replaceChildren(el('div', { class: 'pos-empty' }, t('ord.none')), note);
+    return;
+  }
+  const usd = tokens.getNearUsd();
+  const mc = (near) => (near === null || near === undefined ? '…' : usd ? fmtUsdCompact(near * usd) : `${fmtNum(near)} NEAR`);
+  const symOf = (tk) => (tk === WNEAR ? 'NEAR' : tokens.meta(tk)?.symbol || tk);
+  const cell = (label, value, sub = '', cls = '') => el('div', {}, el('dt', {}, label), el('dd', { class: cls }, value, sub ? el('span', { class: 'sub' }, sub) : null));
+  const cards = views.map((v) => {
+    const sym = symOf(v.token);
+    const amount = `${fmtNum(v.left)} ${symOf(v.side === 'sell' ? v.token : v.quote)}`;
+    const amountSub = v.sizeNear === null ? '' : v.side === 'sell' ? `≈ ${fmtNum(v.sizeNear)} NEAR` : usd ? `≈ ${fmtUsd(v.sizeNear * usd)}` : '';
+    const price = v.priceNear !== null ? `${fmtNum(v.priceNear, { compact: false })} NEAR` : `${fmtNum(v.priceQuote, { compact: false })} ${symOf(v.quote)}`;
+    const dist = v.distancePct;
+    return el('article', { class: `pos-card ord-card is-${v.side}` },
+      el('div', { class: 'pc-head' },
+        tokenIcon(v.token, 'pos-icon'),
+        el('div', { class: 'pc-title' },
+          el('button', { type: 'button', class: 'pc-sym', title: t('showTradesOf', sym), onclick: () => setSearch(sym) }, sym),
+          el('span', { class: `pc-status ${v.side}` }, t(v.side === 'buy' ? 'ord.buy' : 'ord.sell'))),
+        el('div', { class: 'pc-total' }, mc(v.mcNear), el('span', { class: 'sub muted' }, t('ord.limitMcLbl')))),
+      el('dl', { class: 'pc-grid' },
+        cell(t('ord.priceLbl'), price, v.priceNear !== null && usd ? fmtUsd(v.priceNear * usd) : ''),
+        cell(t('ord.sizeLbl'), amount, amountSub),
+        cell(t('ord.nowMcLbl'), mc(v.nowMcNear)),
+        cell(t('ord.toFillLbl'), dist === null ? '…' : fmtPct(dist), dist === null ? '' : t(dist >= 0 ? 'ord.up' : 'ord.down')),
+        cell(t('ord.filledLbl'), v.filledPct === null ? '—' : fmtPct(v.filledPct, { sign: false }), v.bought ? `${fmtNum(v.bought)} ${symOf(v.buyToken)}` : '')),
+      el('div', { class: 'pc-foot' }, [v.createdMs ? t('ord.placed', fmtDateShort(v.createdMs)) : null, v.poolId].filter(Boolean).join(' · ')));
+  });
+  const head = el('div', { class: 'po-sort' }, el('span', { class: 'muted small' }, t('ord.count', { n: views.length, word: tp('ord.word', views.length) })));
+  box.replaceChildren(head, ...cards, note);
 }
 
 // ---------------- ticker ----------------
@@ -810,6 +929,7 @@ function onTick() {
   if (state.account && state.initialDone && now >= state.nextFullAt) {
     state.nextFullAt = now + 60000;
     refreshBalances(state.generation, true);
+    loadOrders(state.generation);
   }
   if (state.initialDone && now >= state.nextPriceAt) {
     state.nextPriceAt = now + 60000;
@@ -820,7 +940,7 @@ function onTick() {
 
 function startTicker() {
   try {
-    const w = new Worker(new URL('./ticker.js?v=cebde690', import.meta.url));
+    const w = new Worker(new URL('./ticker.js?v=b7d0b915', import.meta.url));
     w.onmessage = onTick;
     w.postMessage({ cmd: 'start', ms: 500 });
   } catch {
@@ -906,6 +1026,7 @@ function renderCounts() {
     if (!((a.kind === 'payout' && !s.showPayouts) || (a.kind === 'mention' && !s.showMentions))) counts.all += 1;
   }
   counts.positions = [...state.positions.values()].reduce((n, p) => n + p.cycles.filter((c) => c.buys || c.sells).length, 0);
+  counts.orders = state.orders.length;
   document.querySelectorAll('[data-count]').forEach((n) => {
     const v = counts[n.dataset.count] || 0;
     n.textContent = v ? String(v) : '';
@@ -1028,14 +1149,18 @@ function buildPayoutGroup(items) {
 function renderFeed() {
   const summary = state.filter === 'summary';
   const positions = state.filter === 'positions';
+  const orders = state.filter === 'orders';
   document.body.classList.toggle('view-summary', summary);
   document.body.classList.toggle('view-positions', positions);
+  document.body.classList.toggle('view-orders', orders);
   $('#summaryView').hidden = !summary;
   $('#positionsView').hidden = !positions;
-  if (summary || positions) {
+  $('#ordersView').hidden = !orders;
+  if (summary || positions || orders) {
     renderCounts();
     if (summary) renderSummary();
-    else renderPositionsView();
+    else if (positions) renderPositionsView();
+    else renderOrdersView();
     return;
   }
   const feed = $('#feed');
@@ -1276,7 +1401,7 @@ function renderSide() {
 }
 
 function setSearch(q) {
-  if (state.filter === 'summary' || state.filter === 'positions') {
+  if (state.filter === 'summary' || state.filter === 'positions' || state.filter === 'orders') {
     state.filter = 'all';
     document.querySelectorAll('#tabs button').forEach((x) => x.setAttribute('aria-selected', String(x.dataset.filter === 'all')));
   }

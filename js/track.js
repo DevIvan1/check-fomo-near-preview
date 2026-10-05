@@ -2,8 +2,8 @@
 // no cookies). Sent to the Vercel function api/track.py; the GitHub Pages copy sends to the
 // Vercel URL. Local development (http://localhost) is not logged.
 
-import { TRACK_URL } from './config.js?v=cebde690';
-import { normalizeAccount } from './rules.js?v=cebde690';
+import { TRACK_URL } from './config.js?v=b7d0b915';
+import { normalizeAccount } from './rules.js?v=b7d0b915';
 
 const SENT_KEY = 'cf.tracked.v1';
 const RESEND_MS = 6 * 3600 * 1000; // the same wallet and kind is sent at most once per 6 hours
