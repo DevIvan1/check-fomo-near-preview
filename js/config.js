@@ -1,6 +1,6 @@
 // Static configuration: endpoints, known contracts and labels.
 
-import { t } from './i18n.js?v=55554cd2';
+import { t } from './i18n.js?v=d3ef5837';
 
 export const TX_API = 'https://tx.main.fastnear.com/v0';
 export const FASTNEAR_API = 'https://api.fastnear.com/v1';
@@ -98,6 +98,11 @@ export function contractName(id) {
 
 export function isDex(id) {
   return CONTRACTS[id]?.kind === 'dex';
+}
+
+// Swap aggregators take a wallet's tokens, swap them on DEXes in their own name and send the result back.
+export function isAggregator(id) {
+  return CONTRACTS[id]?.kind === 'aggregator';
 }
 
 export function isStakingPool(id) {

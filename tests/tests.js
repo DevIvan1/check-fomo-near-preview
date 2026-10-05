@@ -1,18 +1,18 @@
 // Browser test suite. Open tests/index.html through any static server.
 
-import { analyzeTx, parseLog, statusKind, failureMessage, fromRpcTxStatus } from '../js/parser.js?v=55554cd2';
-import { describe, humanError } from '../js/describe.js?v=55554cd2';
-import { computePositions, positionRows, accountStats, periodSummary, positionCards, positionsOverview, sortPositionCards } from '../js/positions.js?v=55554cd2';
-import { normalizeAccount, shouldAlert, nearSize, soundKind } from '../js/rules.js?v=55554cd2';
-import { toDecimalString, toNumber, fmtNum, big, shortHash, shortAccount, fmtPct, relTime } from '../js/util.js?v=55554cd2';
-import { safeIcon, dclPrice, routePrice } from '../js/tokens.js?v=55554cd2';
-import { NEAR_ID, systemAbout } from '../js/config.js?v=55554cd2';
-import * as session from '../js/session.js?v=55554cd2';
-import { FollowFeed, isFeedEvent } from '../js/following.js?v=55554cd2';
-import { setLang, t, tp, dictKeys } from '../js/i18n.js?v=55554cd2';
-import * as lb from '../js/leaderboard.js?v=55554cd2';
-import { track, trackEndpoint } from '../js/track.js?v=55554cd2';
-import { pointPrice, orderTokens, orderView, orderEventKind, sortOrders } from '../js/orders.js?v=55554cd2';
+import { analyzeTx, parseLog, statusKind, failureMessage, fromRpcTxStatus } from '../js/parser.js?v=d3ef5837';
+import { describe, humanError } from '../js/describe.js?v=d3ef5837';
+import { computePositions, positionRows, accountStats, periodSummary, positionCards, positionsOverview, sortPositionCards } from '../js/positions.js?v=d3ef5837';
+import { normalizeAccount, shouldAlert, nearSize, soundKind } from '../js/rules.js?v=d3ef5837';
+import { toDecimalString, toNumber, fmtNum, big, shortHash, shortAccount, fmtPct, relTime } from '../js/util.js?v=d3ef5837';
+import { safeIcon, dclPrice, routePrice } from '../js/tokens.js?v=d3ef5837';
+import { NEAR_ID, systemAbout } from '../js/config.js?v=d3ef5837';
+import * as session from '../js/session.js?v=d3ef5837';
+import { FollowFeed, isFeedEvent } from '../js/following.js?v=d3ef5837';
+import { setLang, t, tp, dictKeys } from '../js/i18n.js?v=d3ef5837';
+import * as lb from '../js/leaderboard.js?v=d3ef5837';
+import { track, trackEndpoint } from '../js/track.js?v=d3ef5837';
+import { pointPrice, orderTokens, orderView, orderEventKind, sortOrders } from '../js/orders.js?v=d3ef5837';
 
 const ACC = 'hotfrog2879.near';
 const results = [];
@@ -48,6 +48,8 @@ const META = {
   'batman-4.nearlytrade.near': { symbol: 'BATMAN', decimals: 18 },
   'linear-protocol.near': { symbol: 'LINEAR', decimals: 24 },
   'zec.omft.near': { symbol: 'ZEC', decimals: 8 },
+  'shore-4lzt.launch.shoremarkets.near': { symbol: 'SHORE', decimals: 18 },
+  'hoot-8ecf65.launchpad.justhoot.near': { symbol: 'HOOT', decimals: 18 },
   'wrap.near': { symbol: 'wNEAR', decimals: 24 },
 };
 const LAUNCHES = { 1230: 'singularty.nearlytrade.near', 1951: 'nearly-993927.nearlytrade.near' };
@@ -737,7 +739,7 @@ async function main() {
     eq(describe(A('FUNDING'), ctx()).title, 'Received 385.07 NEAR from a9c866…c61d');
     eq(describe(A('ACCOUNT_CREATED'), ctx()).title, 'Account created');
     for (const key of Object.keys(fx).filter((k) => !k.startsWith('RPC_'))) {
-      const signer = key.startsWith('V2_') || key.startsWith('LIMIT_') || key === 'STOP_POINT_NOFILL' ? fx[key].transaction.signer_id : ACC;
+      const signer = key.startsWith('V2_') || key.startsWith('LIMIT_') || key.startsWith('AGG_') || key === 'STOP_POINT_NOFILL' ? fx[key].transaction.signer_id : ACC;
       const d = describe(analyzeTx(fx[key], signer), ctx());
       ok(!/[А-Яа-яЁё]/.test(JSON.stringify(d)), key + ': в английском посте остался русский текст');
     }
@@ -1237,6 +1239,45 @@ async function main() {
     const order = analyzeTx(fx.LIMIT_ORDER_BUY, 'nadayno.near');
     eq(order.kind, 'order');
     eq(isFeedEvent(order), true);
+  });
+
+  // ---------- swaps through an aggregator (aggregatedex.near) ----------
+  test('агрегатор: продажа SHORE через aggregatedex.near — это продажа, а не перевод', () => {
+    const a = analyzeTx(fx.AGG_SELL_SHORE, 'redbullish.near');
+    eq(a.kind, 'trade');
+    eq(a.trade.side, 'sell');
+    eq(a.trade.token, 'shore-4lzt.launch.shoremarkets.near');
+    approx(toNumber(a.trade.amountOut, 24), 706.76, 0.01, 'получено по балансу кошелька (после комиссии агрегатора)');
+    approx(toNumber(a.trade.amountIn, 18), 10755902.27, 0.01);
+    ok(a.trade.venues.includes('aggregatedex.near'));
+    setLang('en');
+    const d = describe(a, ctx());
+    eq(d.title, 'Sold SHORE for 706.76 NEAR');
+    has(d.subtitle, 'Delta Trade aggregator');
+  });
+  test('агрегатор: покупка HOOT за 420 wNEAR — это покупка', () => {
+    const a = analyzeTx(fx.AGG_BUY_HOOT, 'redbullish.near');
+    eq(a.kind, 'trade');
+    eq(a.trade.side, 'buy');
+    eq(a.trade.token, 'hoot-8ecf65.launchpad.justhoot.near');
+    approx(toNumber(a.trade.amountIn, 24), 420, 1e-9, 'потрачено по балансу, с комиссией агрегатора');
+  });
+  test('агрегатор: отклонённая продажа (проскальзывание) — не перевод, а неудачная сделка', () => {
+    const a = analyzeTx(fx.AGG_FAILED_HOOT, 'redbullish.near');
+    eq(a.kind, 'trade_failed');
+    setLang('ru');
+    const d = describe(a, ctx());
+    has(d.title.replace(/\u00a0/g, ' '), 'Не удалось продать 5,2 млн HOOT'); // ru numbers use a no-break space
+    has(d.lines.find((l) => l.label === 'Ошибка').value, 'проскальзывание');
+    has(d.lines.find((l) => l.label === 'Итог').value, 'средства вернулись');
+    setLang('en');
+  });
+  test('агрегатор: выход из позиции через агрегатор закрывает позицию', () => {
+    const buy = analyzeTx(fx.AGG_BUY_HOOT, 'redbullish.near');
+    const pos = computePositions([buy], { decimals, launchToken: () => null });
+    const p = pos.get('hoot-8ecf65.launchpad.justhoot.near');
+    eq(p.buys, 1);
+    ok(p.qty > 0, 'купленное через агрегатор попадает в позицию');
   });
 
   await Promise.all(pendingTests);

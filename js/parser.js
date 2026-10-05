@@ -1,8 +1,8 @@
 // Turns a raw FastNEAR transaction (tx + receipts + outcomes) into a structured
 // description of what happened to one account. Pure: no network, no DOM.
 
-import { NEAR_ID, WNEAR, isDex, isStakingPool, tokenFamily } from './config.js?v=55554cd2';
-import { b64ToText, tryJson, big } from './util.js?v=55554cd2';
+import { NEAR_ID, WNEAR, isDex, isAggregator, isStakingPool, tokenFamily } from './config.js?v=d3ef5837';
+import { b64ToText, tryJson, big } from './util.js?v=d3ef5837';
 
 export function statusKind(status) {
   if (!status) return 'unknown';
@@ -298,6 +298,7 @@ export function analyzeTx(raw, account) {
   // Zero-for-zero legs (e.g. SwapByStopPoint when the price is already past the stop) are not trades.
   a.swaps = a.allSwaps.filter((s) => (s.swapper === account || (!s.swapper && a.isSigner)) && (s.amountIn > 0n || s.amountOut > 0n));
   a.trade = buildTrade(a);
+  if (!a.trade && a.isSigner) delegatedTrade(a, account);
   a.intent = a.isSigner ? detectSwapIntent(a) : null;
   a.status = txStatus === 'failure' || (receipts[0] && receipts[0].status === 'failure')
     ? 'failed'
@@ -306,6 +307,24 @@ export function analyzeTx(raw, account) {
   classify(a, account, tx);
   collectTokens(a);
   return a;
+}
+
+// Aggregators and routers (e.g. aggregatedex.near) swap in their own name inside the wallet's own
+// transaction: they take the tokens, trade on a DEX and send the result back. Those swaps are the
+// wallet's trade when the wallet's balances moved accordingly (in out of the wallet, out into it).
+function delegatedTrade(a, account) {
+  const delegates = new Set();
+  for (const x of a.effActions) {
+    if (x.kind === 'FunctionCall' && x.method === 'ft_transfer_call' && x.args?.receiver_id) delegates.add(x.args.receiver_id);
+  }
+  if (a.effReceiver) delegates.add(a.effReceiver);
+  delegates.delete(account);
+  const legs = a.allSwaps.filter((s) => s.swapper && delegates.has(s.swapper) && !isDex(s.swapper) && (s.amountIn > 0n || s.amountOut > 0n));
+  if (!legs.length) return;
+  const tr = buildTrade({ ...a, swaps: legs });
+  if (!tr || tr.circular || !tr.inFromWallet || !tr.outToWallet) return;
+  a.swaps = legs;
+  a.trade = { ...tr, via: [...new Set(legs.map((l) => l.swapper))], venues: [...new Set([...legs.map((l) => l.swapper), ...tr.venues])] };
 }
 
 function buildTrade(a) {
@@ -366,7 +385,7 @@ function buildTrade(a) {
   for (const t of a.taxes) if (t.token === token) taxAmount += t.amount;
 
   return {
-    side, token, tokenIn, tokenOut, amountIn, amountOut, legIn, legOut, circular,
+    side, token, tokenIn, tokenOut, amountIn, amountOut, legIn, legOut, circular, inFromWallet, outToWallet,
     internal: !circular && !inFromWallet && !outToWallet,
     extraInputs: inputs.slice(1), extraOutputs: outputs.slice(1),
     venues: [...new Set(legs.map((l) => l.venue))],
@@ -401,6 +420,11 @@ function detectSwapIntent(a) {
       if (!target) continue;
       const tokenIn = a.effReceiver === WNEAR && hasWrap ? NEAR_ID : norm(a.effReceiver);
       return { tokenIn, tokenOut: norm(target.tokenOut), amountIn: big(x.args.amount), minOut: target.minOut, dex: x.args.receiver_id, stopPoint: !!target.stopPoint };
+    }
+    if (x.method === 'ft_transfer_call' && isAggregator(x.args?.receiver_id)) {
+      // the route in the message is the aggregator's own encoding: the target token is unknown
+      const tokenIn = a.effReceiver === WNEAR && hasWrap ? NEAR_ID : norm(a.effReceiver);
+      return { tokenIn, tokenOut: null, amountIn: big(x.args.amount), minOut: 0n, dex: x.args.receiver_id };
     }
     if (isDex(a.effReceiver) && ['swap', 'swap_by_output', 'execute_actions'].includes(x.method)) {
       const list = x.args?.actions || [];

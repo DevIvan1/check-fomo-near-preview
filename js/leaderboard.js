@@ -8,9 +8,9 @@
 // Periods work like Nearly's: a period holds the positions opened in it, each with its full result
 // (realized + unrealized at the current price), in USD. Only profitable wallets make the board.
 
-import { toNumber } from './util.js?v=55554cd2';
-import { normalizeAccount } from './rules.js?v=55554cd2';
-import { CONTRACTS } from './config.js?v=55554cd2';
+import { toNumber } from './util.js?v=d3ef5837';
+import { normalizeAccount } from './rules.js?v=d3ef5837';
+import { CONTRACTS } from './config.js?v=d3ef5837';
 
 export const WINDOWS = { '24h': 1, '7d': 7, '30d': 30 }; // days
 export const TOP_N = 100;

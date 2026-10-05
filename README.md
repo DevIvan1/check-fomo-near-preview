@@ -42,6 +42,7 @@ Where the numbers come from, without counting anything twice:
 
   Sort by date opened or by size (invested amount); click the active option again to reverse. Cards refresh live with the pool price. The right column holds only the following feed.
 - **Orders tab: limit orders.** The wallet's open limit orders on Rhea DCL (where Nearly tokens and most memes trade), read from the DCL contract (`list_active_orders`): buy or sell, the limit price in NEAR and USD, the **market cap in USD at which the order fills**, the market cap now, how far the price has to move to fill it, the amount and how much is already filled. Feed posts about limit orders say the same: "Limit buy: NEARLY for 500 NEAR at $4.3M MC", "Cancelled a limit sell of NEARLY ($3.4M MC)", and an old order that is no longer open is marked as such. The price comes from the order's DCL point (1.0001^point, scaled by decimals); MC = limit price × total supply.
+- **Swaps through aggregators count as trades.** When a wallet swaps through a swap aggregator such as `aggregatedex.near` (Delta Trade), the aggregator trades on the DEX in its own name and sends the result back; such a transaction is now the wallet's buy or sell (amounts from the wallet's own balance, after the aggregator's fee), so positions close and PnL is right. A swap the DEX refused (e.g. slippage) shows as a failed trade with the reason, not as a transfer.
 - **System addresses are marked.** A contract is not a person: its page says so and what it does — for example `aggregatedex.near` is the Delta Trade swap aggregator (wallets and apps send it tokens, it swaps them on DEXes such as Rhea and sends the result back, so its “trades” are many people’s swaps). The same for NEAR Intents, Rhea, Rhea DCL, wNEAR, Nearly and other known contracts, and for any token contract. System contracts never appear in the leaderboard.
 - **Louder, longer alerts.** Three-note sounds through a compressor: rising for buys, falling for sells.
 
@@ -112,7 +113,7 @@ python -m http.server 8000
 ```
 
 - **App:** http://localhost:8000/
-- **Tests:** http://localhost:8000/tests/ (83 tests: parser, both languages, PnL and summary, positions, limit orders, leaderboard maths and engine, usage-log client, backup-source conversion, alert rules, XSS safety). Usage-log server and the Excel export, offline against a fake Redis: `python tests/test_usage_log.py` (10 tests). `tests/` and `tools/` are not deployed to Vercel (see `.vercelignore`).
+- **Tests:** http://localhost:8000/tests/ (87 tests: parser, both languages, PnL and summary, positions, limit orders, leaderboard maths and engine, usage-log client, backup-source conversion, alert rules, XSS safety). Usage-log server and the Excel export, offline against a fake Redis: `python tests/test_usage_log.py` (10 tests). `tests/` and `tools/` are not deployed to Vercel (see `.vercelignore`).
 
 Before every commit, stamp the module versions:
 
