@@ -18,6 +18,7 @@ import json
 import os
 import pathlib
 import sys
+import time
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent / 'api'))
@@ -32,6 +33,8 @@ CACHE = ROOT / 'tools' / '.wallets-cache.json'  # last good data, shown if an up
 ANON = '(без входа)'
 MANUAL = 'без кошелька (вписал адрес)'
 LIST_MAX = 40  # searched wallets listed per user on the first sheet
+RETRIES = 3  # the network can be down for a moment, e.g. right after the computer wakes up
+RETRY_PAUSE = 15  # seconds between attempts
 
 
 def read_env():
@@ -199,7 +202,14 @@ def main():
         print('not configured')
         return 1
     try:
-        data = fetch(conf)
+        for attempt in range(RETRIES):
+            try:
+                data = fetch(conf)
+                break
+            except Exception:
+                if attempt == RETRIES - 1:
+                    raise
+                time.sleep(RETRY_PAUSE)
     except Exception as e:  # keep showing the last good table
         cached = json.loads(CACHE.read_text(encoding='utf-8')) if CACHE.exists() else None
         note = f'Не удалось обновить в {now:%d.%m.%Y %H:%M}: {clean(e, 120)}'

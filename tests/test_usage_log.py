@@ -289,6 +289,7 @@ class UsageLogTest(unittest.TestCase):
             self.assertTrue(summary['Поисков всего'].endswith('-> 4'))
             # storage down: the last good table stays, with a note
             sync.connection = lambda: ('rest', 'http://127.0.0.1:9', READ_TOKEN)
+            sync.RETRY_PAUSE = 0  # retries are tried, without waiting
             self.assertEqual(sync.main(), 2)
             book = read_xlsx(sync.OUT)
             self.assertIn('alice.near', [r[1] for r in book['Пользователи'][1:]])
