@@ -1,18 +1,18 @@
 // Browser test suite. Open tests/index.html through any static server.
 
-import { analyzeTx, parseLog, statusKind, failureMessage, fromRpcTxStatus } from '../js/parser.js?v=d3ef5837';
-import { describe, humanError } from '../js/describe.js?v=d3ef5837';
-import { computePositions, positionRows, accountStats, periodSummary, positionCards, positionsOverview, sortPositionCards } from '../js/positions.js?v=d3ef5837';
-import { normalizeAccount, shouldAlert, nearSize, soundKind } from '../js/rules.js?v=d3ef5837';
-import { toDecimalString, toNumber, fmtNum, big, shortHash, shortAccount, fmtPct, relTime } from '../js/util.js?v=d3ef5837';
-import { safeIcon, dclPrice, routePrice } from '../js/tokens.js?v=d3ef5837';
-import { NEAR_ID, systemAbout } from '../js/config.js?v=d3ef5837';
-import * as session from '../js/session.js?v=d3ef5837';
-import { FollowFeed, isFeedEvent } from '../js/following.js?v=d3ef5837';
-import { setLang, t, tp, dictKeys } from '../js/i18n.js?v=d3ef5837';
-import * as lb from '../js/leaderboard.js?v=d3ef5837';
-import { track, trackEndpoint } from '../js/track.js?v=d3ef5837';
-import { pointPrice, orderTokens, orderView, orderEventKind, sortOrders } from '../js/orders.js?v=d3ef5837';
+import { analyzeTx, parseLog, statusKind, failureMessage, fromRpcTxStatus } from '../js/parser.js?v=9489111f';
+import { describe, humanError } from '../js/describe.js?v=9489111f';
+import { computePositions, positionRows, accountStats, periodSummary, positionCards, positionsOverview, sortPositionCards } from '../js/positions.js?v=9489111f';
+import { normalizeAccount, shouldAlert, nearSize, soundKind } from '../js/rules.js?v=9489111f';
+import { toDecimalString, toNumber, fmtNum, big, shortHash, shortAccount, fmtPct, relTime } from '../js/util.js?v=9489111f';
+import { safeIcon, dclPrice, routePrice } from '../js/tokens.js?v=9489111f';
+import { NEAR_ID, systemAbout, isStable } from '../js/config.js?v=9489111f';
+import * as session from '../js/session.js?v=9489111f';
+import { FollowFeed, isFeedEvent } from '../js/following.js?v=9489111f';
+import { setLang, t, tp, dictKeys } from '../js/i18n.js?v=9489111f';
+import * as lb from '../js/leaderboard.js?v=9489111f';
+import { track, trackEndpoint } from '../js/track.js?v=9489111f';
+import { pointPrice, orderTokens, orderView, orderEventKind, sortOrders } from '../js/orders.js?v=9489111f';
 
 const ACC = 'hotfrog2879.near';
 const results = [];
@@ -51,6 +51,7 @@ const META = {
   'shore-4lzt.launch.shoremarkets.near': { symbol: 'SHORE', decimals: 18 },
   'hoot-8ecf65.launchpad.justhoot.near': { symbol: 'HOOT', decimals: 18 },
   'wrap.near': { symbol: 'wNEAR', decimals: 24 },
+  '17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1': { symbol: 'USDC', decimals: 6 },
 };
 const LAUNCHES = { 1230: 'singularty.nearlytrade.near', 1951: 'nearly-993927.nearlytrade.near' };
 const ctx = (extra = {}) => ({
@@ -739,7 +740,7 @@ async function main() {
     eq(describe(A('FUNDING'), ctx()).title, 'Received 385.07 NEAR from a9c866…c61d');
     eq(describe(A('ACCOUNT_CREATED'), ctx()).title, 'Account created');
     for (const key of Object.keys(fx).filter((k) => !k.startsWith('RPC_'))) {
-      const signer = key.startsWith('V2_') || key.startsWith('LIMIT_') || key.startsWith('AGG_') || key === 'STOP_POINT_NOFILL' ? fx[key].transaction.signer_id : ACC;
+      const signer = key.startsWith('V2_') || key.startsWith('LIMIT_') || key.startsWith('AGG_') || key.startsWith('STABLE_') || key === 'STOP_POINT_NOFILL' ? fx[key].transaction.signer_id : ACC;
       const d = describe(analyzeTx(fx[key], signer), ctx());
       ok(!/[А-Яа-яЁё]/.test(JSON.stringify(d)), key + ': в английском посте остался русский текст');
     }
@@ -1278,6 +1279,45 @@ async function main() {
     const p = pos.get('hoot-8ecf65.launchpad.justhoot.near');
     eq(p.buys, 1);
     ok(p.qty > 0, 'купленное через агрегатор попадает в позицию');
+  });
+
+  // ---------- stablecoins: NEAR <-> USDC is moving money, not a position ----------
+  const USDC = '17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1';
+  test('стейблкоины: NEAR → USDC — обмен, а не покупка USDC', () => {
+    const a = analyzeTx(fx.STABLE_BUY_USDC, 'wx-cruce.near');
+    eq(a.kind, 'trade');
+    eq(a.trade.side, 'swap');
+    eq(a.trade.token, USDC);
+    approx(toNumber(a.trade.amountOut, 6), 43.181455, 1e-6);
+    setLang('ru');
+    const d = describe(a, ctx());
+    eq(d.title, 'Обменял 8,35 NEAR на 43,18 USDC');
+    ok(!d.lines.some((l) => l.label === 'PnL'), 'у обмена на стейблкоин нет PnL');
+    setLang('en');
+  });
+  test('стейблкоины: USDC → NEAR — обмен, токен поста — USDC, а не NEAR', () => {
+    const a = analyzeTx(fx.STABLE_SELL_USDC, 'wx-cruce.near');
+    eq(a.kind, 'trade');
+    eq(a.trade.side, 'swap');
+    eq(a.trade.token, USDC);
+    eq(nearSize(a), null, 'обмен на стейблкоин не считается объёмом сделок');
+  });
+  test('стейблкоины: обмен на USDC и отправка USDC не создают позицию и минус', () => {
+    const buy = analyzeTx(fx.STABLE_BUY_USDC, 'wx-cruce.near');
+    const sell = analyzeTx(fx.STABLE_SELL_USDC, 'wx-cruce.near');
+    const pos = computePositions([buy, sell], { decimals, launchToken: () => null });
+    ok(!pos.has(USDC), 'USDC не должен быть позицией');
+    const sum = periodSummary([buy, sell], pos, 0, { decimals, balance: () => 0, priceNear: () => 0.2, isOpen: () => true });
+    eq(sum.total, 0);
+    eq(sum.rows.length, 0);
+  });
+  test('стейблкоины: только настоящие контракты — мем «USDC» с лаунчпада остаётся мемом', () => {
+    ok(isStable(USDC));
+    ok(isStable('usdt.tether-token.near'));
+    ok(isStable('a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48.factory.bridge.near'));
+    ok(!isStable('usdc-4.nearlytrade.near'));
+    ok(!isStable('usdc-4d51ec.launchpad.justhoot.near'));
+    ok(!isStable('wrap.near'));
   });
 
   await Promise.all(pendingTests);

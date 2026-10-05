@@ -2,9 +2,9 @@
 // market cap an order waits, how far that is from the current price, how much of it is filled.
 // Works for an order from DCL's `list_active_orders` and for the order in an `order_*` event.
 
-import { WNEAR } from './config.js?v=d3ef5837';
-import { toNumber } from './util.js?v=d3ef5837';
-import { isMeme } from './leaderboard.js?v=d3ef5837';
+import { WNEAR } from './config.js?v=9489111f';
+import { toNumber } from './util.js?v=9489111f';
+import { isMeme } from './leaderboard.js?v=9489111f';
 
 export const DCL_ORDERS_METHOD = 'list_active_orders';
 

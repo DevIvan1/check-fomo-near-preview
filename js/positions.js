@@ -1,7 +1,7 @@
 // Per-token position tracking (average-cost method) and account-level stats.
 
-import { NEAR_ID, WNEAR } from './config.js?v=d3ef5837';
-import { toNumber } from './util.js?v=d3ef5837';
+import { NEAR_ID, WNEAR } from './config.js?v=9489111f';
+import { toNumber } from './util.js?v=9489111f';
 
 const byChainOrder = (x, y) => (x.blockHeight ?? 0) - (y.blockHeight ?? 0) || (x.txIndex ?? 0) - (y.txIndex ?? 0);
 

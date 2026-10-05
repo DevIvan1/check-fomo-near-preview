@@ -1,23 +1,23 @@
 // UI + live polling loop.
 
-import { DEFAULT_SETTINGS, HISTORY_PAGE, POLL_PAGE, NEAR_ID, WNEAR, DCL_CONTRACT, explorer, systemAbout, tokenFamily } from './config.js?v=d3ef5837';
-import { normalizeAccount, shouldAlert, soundKind } from './rules.js?v=d3ef5837';
-import * as api from './api.js?v=d3ef5837';
-import * as tokens from './tokens.js?v=d3ef5837';
-import { analyzeTx } from './parser.js?v=d3ef5837';
-import { describe, tokenLinks } from './describe.js?v=d3ef5837';
-import { computePositions, periodSummary, positionCards, positionsOverview, sortPositionCards } from './positions.js?v=d3ef5837';
-import * as alerts from './alerts.js?v=d3ef5837';
+import { DEFAULT_SETTINGS, HISTORY_PAGE, POLL_PAGE, NEAR_ID, WNEAR, DCL_CONTRACT, explorer, systemAbout, tokenFamily } from './config.js?v=9489111f';
+import { normalizeAccount, shouldAlert, soundKind } from './rules.js?v=9489111f';
+import * as api from './api.js?v=9489111f';
+import * as tokens from './tokens.js?v=9489111f';
+import { analyzeTx } from './parser.js?v=9489111f';
+import { describe, tokenLinks } from './describe.js?v=9489111f';
+import { computePositions, periodSummary, positionCards, positionsOverview, sortPositionCards } from './positions.js?v=9489111f';
+import * as alerts from './alerts.js?v=9489111f';
 import {
   fmtNum, fmtUsd, fmtUsdCompact, fmtPct, fmtDateShort, relTime, fmtTime, fmtDateTime, dayLabel, toNumber, shortAccount,
   storageGet, storageSet, toDecimalString,
-} from './util.js?v=d3ef5837';
-import { t, tp, setLang, getLang, getLocale, applyStatic } from './i18n.js?v=d3ef5837';
-import * as session from './session.js?v=d3ef5837';
-import { FollowFeed } from './following.js?v=d3ef5837';
-import { Leaderboard, WINDOWS as LB_WINDOWS, memePlatform } from './leaderboard.js?v=d3ef5837';
-import { track } from './track.js?v=d3ef5837';
-import { orderView, orderTokens, sortOrders, DCL_ORDERS_METHOD } from './orders.js?v=d3ef5837';
+} from './util.js?v=9489111f';
+import { t, tp, setLang, getLang, getLocale, applyStatic } from './i18n.js?v=9489111f';
+import * as session from './session.js?v=9489111f';
+import { FollowFeed } from './following.js?v=9489111f';
+import { Leaderboard, WINDOWS as LB_WINDOWS, memePlatform } from './leaderboard.js?v=9489111f';
+import { track } from './track.js?v=9489111f';
+import { orderView, orderTokens, sortOrders, DCL_ORDERS_METHOD } from './orders.js?v=9489111f';
 
 const $ = (sel) => document.querySelector(sel);
 const SETTINGS_KEY = 'nwm.settings.v1';
@@ -941,7 +941,7 @@ function onTick() {
 
 function startTicker() {
   try {
-    const w = new Worker(new URL('./ticker.js?v=d3ef5837', import.meta.url));
+    const w = new Worker(new URL('./ticker.js?v=9489111f', import.meta.url));
     w.onmessage = onTick;
     w.postMessage({ cmd: 'start', ms: 500 });
   } catch {

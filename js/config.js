@@ -1,6 +1,6 @@
 // Static configuration: endpoints, known contracts and labels.
 
-import { t } from './i18n.js?v=d3ef5837';
+import { t } from './i18n.js?v=9489111f';
 
 export const TX_API = 'https://tx.main.fastnear.com/v0';
 export const FASTNEAR_API = 'https://api.fastnear.com/v1';
@@ -103,6 +103,31 @@ export function isDex(id) {
 // Swap aggregators take a wallet's tokens, swap them on DEXes in their own name and send the result back.
 export function isAggregator(id) {
   return CONTRACTS[id]?.kind === 'aggregator';
+}
+
+// Dollar stablecoins on NEAR (exact contracts: launchpads have meme tokens named "USDC" too).
+// A swap between NEAR and a stablecoin is moving money, not a position.
+export const STABLECOINS = new Set([
+  '17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1', // USDC
+  'usdt.tether-token.near', // USDt
+  'a0b86991c6218b36c1d19d4a2e9eb0ce3606eb48.factory.bridge.near', // USDC.e
+  'dac17f958d2ee523a2206206994597c13d831ec7.factory.bridge.near', // USDT.e
+  '6b175474e89094c44da98b954eedeac495271d0f.factory.bridge.near', // DAI
+  '853d955acef822db058eb8505911ed77f175b99e.factory.bridge.near', // FRAX
+  '16.contract.portalbridge.near', // USDC (Wormhole)
+  'eth-0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48.omft.near', // USDC (Ethereum, NEAR Intents)
+  'eth-0xdac17f958d2ee523a2206206994597c13d831ec7.omft.near', // USDT (Ethereum, NEAR Intents)
+  'eth-0x6b175474e89094c44da98b954eedeac495271d0f.omft.near', // DAI (Ethereum, NEAR Intents)
+  'base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near', // USDC (Base, NEAR Intents)
+  'arb-0xaf88d065e77c8cc2239327c5edb3a432268e5831.omft.near', // USDC (Arbitrum, NEAR Intents)
+  'arb-0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9.omft.near', // USDT (Arbitrum, NEAR Intents)
+  'sol-5ce3bf3a31af18be40ba30f721101b4341690186.omft.near', // USDC (Solana, NEAR Intents)
+  'sol-c800a4bd850783ccb82c2b2c7e84175443606352.omft.near', // USDT (Solana, NEAR Intents)
+  'tron-d28a265909efecdcee7c5028585214ea0b96f015.omft.near', // USDT (Tron, NEAR Intents)
+]);
+
+export function isStable(id) {
+  return STABLECOINS.has(id);
 }
 
 export function isStakingPool(id) {

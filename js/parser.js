@@ -1,8 +1,8 @@
 // Turns a raw FastNEAR transaction (tx + receipts + outcomes) into a structured
 // description of what happened to one account. Pure: no network, no DOM.
 
-import { NEAR_ID, WNEAR, isDex, isAggregator, isStakingPool, tokenFamily } from './config.js?v=d3ef5837';
-import { b64ToText, tryJson, big } from './util.js?v=d3ef5837';
+import { NEAR_ID, WNEAR, isDex, isAggregator, isStable, isStakingPool, tokenFamily } from './config.js?v=9489111f';
+import { b64ToText, tryJson, big } from './util.js?v=9489111f';
 
 export function statusKind(status) {
   if (!status) return 'unknown';
@@ -365,8 +365,9 @@ function buildTrade(a) {
   const outToWallet = comparable(dOut, legOut);
   const amountIn = inFromWallet ? -dIn : legIn;
   const amountOut = outToWallet ? dOut : legOut;
-  const side = circular ? 'swap' : tokenIn === NEAR_ID ? 'buy' : tokenOut === NEAR_ID ? 'sell' : 'swap';
-  const token = side === 'buy' ? tokenOut : side === 'sell' ? tokenIn : tokenOut;
+  // NEAR <-> stablecoin is moving money between currencies, not opening or closing a position.
+  const side = circular ? 'swap' : tokenIn === NEAR_ID && !isStable(tokenOut) ? 'buy' : tokenOut === NEAR_ID && !isStable(tokenIn) ? 'sell' : 'swap';
+  const token = side === 'buy' ? tokenOut : side === 'sell' ? tokenIn : tokenOut === NEAR_ID ? tokenIn : tokenOut;
 
   // Ordered path following the legs from the input token.
   const route = [tokenIn];
