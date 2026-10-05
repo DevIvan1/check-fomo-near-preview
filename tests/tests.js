@@ -1,18 +1,18 @@
 // Browser test suite. Open tests/index.html through any static server.
 
-import { analyzeTx, parseLog, statusKind, failureMessage, fromRpcTxStatus } from '../js/parser.js?v=b7d0b915';
-import { describe, humanError } from '../js/describe.js?v=b7d0b915';
-import { computePositions, positionRows, accountStats, periodSummary, positionCards, positionsOverview, sortPositionCards } from '../js/positions.js?v=b7d0b915';
-import { normalizeAccount, shouldAlert, nearSize, soundKind } from '../js/rules.js?v=b7d0b915';
-import { toDecimalString, toNumber, fmtNum, big, shortHash, shortAccount, fmtPct, relTime } from '../js/util.js?v=b7d0b915';
-import { safeIcon, dclPrice, routePrice } from '../js/tokens.js?v=b7d0b915';
-import { NEAR_ID } from '../js/config.js?v=b7d0b915';
-import * as session from '../js/session.js?v=b7d0b915';
-import { FollowFeed, isFeedEvent } from '../js/following.js?v=b7d0b915';
-import { setLang, t, tp, dictKeys } from '../js/i18n.js?v=b7d0b915';
-import * as lb from '../js/leaderboard.js?v=b7d0b915';
-import { track, trackEndpoint } from '../js/track.js?v=b7d0b915';
-import { pointPrice, orderTokens, orderView, orderEventKind, sortOrders } from '../js/orders.js?v=b7d0b915';
+import { analyzeTx, parseLog, statusKind, failureMessage, fromRpcTxStatus } from '../js/parser.js?v=55554cd2';
+import { describe, humanError } from '../js/describe.js?v=55554cd2';
+import { computePositions, positionRows, accountStats, periodSummary, positionCards, positionsOverview, sortPositionCards } from '../js/positions.js?v=55554cd2';
+import { normalizeAccount, shouldAlert, nearSize, soundKind } from '../js/rules.js?v=55554cd2';
+import { toDecimalString, toNumber, fmtNum, big, shortHash, shortAccount, fmtPct, relTime } from '../js/util.js?v=55554cd2';
+import { safeIcon, dclPrice, routePrice } from '../js/tokens.js?v=55554cd2';
+import { NEAR_ID, systemAbout } from '../js/config.js?v=55554cd2';
+import * as session from '../js/session.js?v=55554cd2';
+import { FollowFeed, isFeedEvent } from '../js/following.js?v=55554cd2';
+import { setLang, t, tp, dictKeys } from '../js/i18n.js?v=55554cd2';
+import * as lb from '../js/leaderboard.js?v=55554cd2';
+import { track, trackEndpoint } from '../js/track.js?v=55554cd2';
+import { pointPrice, orderTokens, orderView, orderEventKind, sortOrders } from '../js/orders.js?v=55554cd2';
 
 const ACC = 'hotfrog2879.near';
 const results = [];
@@ -1219,6 +1219,24 @@ async function main() {
     const open = describe(buy, ctx({ ...base, orderOpen: (id) => id === 'nearly-993927.nearlytrade.near|wrap.near|10000#11037' }));
     ok(open.lines.some((l) => l.label === 'MC now'), 'открытая — с текущей капой');
     eq(open.lines.some((l) => l.label === 'Status'), false);
+  });
+
+  test('системные адреса: агрегатор и другие контракты — не трейдеры, у них есть пояснение', () => {
+    eq(lb.isTraderAccount('aggregatedex.near'), false, 'агрегатор Delta Trade не попадает в рейтинг');
+    eq(lb.isTraderAccount('wrap.near'), false);
+    eq(lb.isTraderAccount('nearlytrade.near'), false);
+    eq(systemAbout('aggregatedex.near'), 'sys.aggregatedex');
+    eq(systemAbout('alice.near'), null);
+    setLang('ru');
+    has(t('sys.aggregatedex'), 'агрегатор обменов платформы Delta Trade');
+    has(t('sys.token', { sym: 'NEARLY', platform: 'Nearly' }), 'контракт токена NEARLY (Nearly)');
+    setLang('en');
+    has(t('sys.title'), 'System address');
+  });
+  test('лента подписок: лимитки подписок тоже попадают в ленту', () => {
+    const order = analyzeTx(fx.LIMIT_ORDER_BUY, 'nadayno.near');
+    eq(order.kind, 'order');
+    eq(isFeedEvent(order), true);
   });
 
   await Promise.all(pendingTests);

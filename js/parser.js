@@ -1,8 +1,8 @@
 // Turns a raw FastNEAR transaction (tx + receipts + outcomes) into a structured
 // description of what happened to one account. Pure: no network, no DOM.
 
-import { NEAR_ID, WNEAR, isDex, isStakingPool, tokenFamily } from './config.js?v=b7d0b915';
-import { b64ToText, tryJson, big } from './util.js?v=b7d0b915';
+import { NEAR_ID, WNEAR, isDex, isStakingPool, tokenFamily } from './config.js?v=55554cd2';
+import { b64ToText, tryJson, big } from './util.js?v=55554cd2';
 
 export function statusKind(status) {
   if (!status) return 'unknown';

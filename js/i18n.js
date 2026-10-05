@@ -56,6 +56,20 @@ export function applyStatic(root = document) {
 
 const DICT = {
   en: {
+    // ---- System addresses ----
+    'sys.title': 'System address, not a person.',
+    'sys.aggregatedex': 'aggregatedex.near is the swap aggregator of the Delta Trade platform (owned by deltatrade.near). Wallets and apps send it tokens with a route; the contract swaps them on DEXes (for example Rhea) and sends the result back to the person. So its “trades” are many different people’s swaps, not one trader’s.',
+    'sys.intents': 'intents.near is the NEAR Intents contract: cross-chain and intent-based swaps go through it, and solvers fill people’s requests. Its activity is many people’s swaps, not one trader’s.',
+    'sys.rhea': 'v2.ref-finance.near is the main contract of the Rhea DEX (formerly Ref Finance): liquidity pools and swaps. It holds pool funds and executes everyone’s swaps.',
+    'sys.rheaDcl': 'dclv2.ref-labs.near is Rhea DCL: concentrated-liquidity pools and limit orders. Nearly tokens and most memes trade here; it executes everyone’s swaps and orders.',
+    'sys.wrap': 'wrap.near is the wNEAR contract: NEAR wrapped as a token so that DEXes can trade it. It wraps and unwraps everyone’s NEAR.',
+    'sys.nearly': 'nearlytrade.near is the Nearly launchpad contract: it launches tokens and pays holder rewards.',
+    'sys.nearlyLock': 'lock2.nearlytrade.near is the Nearly contract that keeps the liquidity of launched tokens locked.',
+    'sys.memeCooking': 'meme-cooking.near is the Meme Cooking launchpad contract: it runs token launches.',
+    'sys.lending': 'contract.main.burrow.near is Rhea Lending (formerly Burrow): deposits and loans of many people.',
+    'sys.meteorRelayer': 'meteor-relayer.near is a service account of Meteor Wallet: it sends transactions of the wallet’s users, pays their gas (meta-transactions) and creates new accounts.',
+    'sys.registrar': 'near is the root account of the .near names: it creates new name.near accounts.',
+    'sys.token': ({ sym, platform }) => `This is the contract of the ${sym} token${platform ? ` (${platform})` : ''}, not a wallet: it keeps everyone’s balances of the token and moves them when people trade.`,
     // ---- Limit orders (Rhea DCL) ----
     'tab.orders': 'Orders',
     'tag.limit': 'limit',
@@ -456,6 +470,20 @@ const DICT = {
   },
 
   ru: {
+    // ---- Системные адреса ----
+    'sys.title': 'Системный адрес — не пользователь.',
+    'sys.aggregatedex': 'aggregatedex.near — агрегатор обменов платформы Delta Trade (владелец — deltatrade.near). Кошельки и приложения присылают ему токены с маршрутом; контракт сам меняет их на DEX (например, на Rhea) и отправляет результат обратно человеку. Поэтому его «сделки» — это обмены разных людей, а не одного трейдера.',
+    'sys.intents': 'intents.near — контракт NEAR Intents: через него проходят кроссчейн-обмены и обмены «по намерению», заявки людей исполняют солверы. Его активность — обмены многих людей, а не одного трейдера.',
+    'sys.rhea': 'v2.ref-finance.near — главный контракт DEX Rhea (бывший Ref Finance): пулы ликвидности и обмены. Он хранит средства пулов и исполняет обмены всех пользователей.',
+    'sys.rheaDcl': 'dclv2.ref-labs.near — Rhea DCL: пулы с концентрированной ликвидностью и лимитные ордера. Здесь торгуются токены Nearly и большинство мемов; контракт исполняет обмены и ордера всех пользователей.',
+    'sys.wrap': 'wrap.near — контракт wNEAR: NEAR в виде токена, чтобы им можно было торговать на DEX. Он оборачивает и разворачивает NEAR всех пользователей.',
+    'sys.nearly': 'nearlytrade.near — контракт лаунчпада Nearly: запускает токены и платит выплаты холдерам.',
+    'sys.nearlyLock': 'lock2.nearlytrade.near — контракт Nearly, в котором заблокирована ликвидность запущенных токенов.',
+    'sys.memeCooking': 'meme-cooking.near — контракт лаунчпада Meme Cooking: проводит запуски токенов.',
+    'sys.lending': 'contract.main.burrow.near — Rhea Lending (бывший Burrow): депозиты и займы многих людей.',
+    'sys.meteorRelayer': 'meteor-relayer.near — служебный аккаунт Meteor Wallet: отправляет транзакции пользователей кошелька, оплачивает за них газ (мета-транзакции) и создаёт новые аккаунты.',
+    'sys.registrar': 'near — корневой аккаунт имён .near: создаёт новые аккаунты вида имя.near.',
+    'sys.token': ({ sym, platform }) => `Это контракт токена ${sym}${platform ? ` (${platform})` : ''}, а не кошелёк: он хранит балансы токена у всех держателей и переводит их, когда люди торгуют.`,
     // ---- Лимитки (Rhea DCL) ----
     'tab.orders': 'Лимитки',
     'tag.limit': 'лимитка',

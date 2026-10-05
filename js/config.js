@@ -1,6 +1,6 @@
 // Static configuration: endpoints, known contracts and labels.
 
-import { t } from './i18n.js?v=b7d0b915';
+import { t } from './i18n.js?v=55554cd2';
 
 export const TX_API = 'https://tx.main.fastnear.com/v0';
 export const FASTNEAR_API = 'https://api.fastnear.com/v1';
@@ -56,19 +56,26 @@ export const DEFAULT_SETTINGS = {
   lbSort: 'pnl', // 'pnl' | 'roi'
 };
 
-// Known contracts. kind: dex | launchpad | wrap | lending | wallet
+// Known contracts. kind: dex | aggregator | launchpad | wrap | lending | wallet | registrar
+// about: i18n key explaining on the account's page that it is a system address, not a person.
 export const CONTRACTS = {
-  'dclv2.ref-labs.near': { name: 'Rhea DCL', kind: 'dex' },
-  'v2.ref-finance.near': { name: 'Rhea', kind: 'dex' },
-  'intents.near': { name: 'NEAR Intents', kind: 'dex' },
-  'wrap.near': { name: 'wNEAR', kind: 'wrap' },
-  'nearlytrade.near': { name: 'Nearly', kind: 'launchpad' },
-  'lock2.nearlytrade.near': { name: 'Nearly LP lock', kind: 'launchpad' },
-  'meme-cooking.near': { name: 'Meme Cooking', kind: 'launchpad' },
-  'contract.main.burrow.near': { name: 'Rhea Lending', kind: 'lending' },
-  'meteor-relayer.near': { name: 'Meteor Wallet', kind: 'wallet' },
-  'near': { name: 'near', kind: 'registrar' },
+  'dclv2.ref-labs.near': { name: 'Rhea DCL', kind: 'dex', about: 'sys.rheaDcl' },
+  'v2.ref-finance.near': { name: 'Rhea', kind: 'dex', about: 'sys.rhea' },
+  'intents.near': { name: 'NEAR Intents', kind: 'dex', about: 'sys.intents' },
+  'aggregatedex.near': { name: 'Delta Trade aggregator', kind: 'aggregator', about: 'sys.aggregatedex' },
+  'wrap.near': { name: 'wNEAR', kind: 'wrap', about: 'sys.wrap' },
+  'nearlytrade.near': { name: 'Nearly', kind: 'launchpad', about: 'sys.nearly' },
+  'lock2.nearlytrade.near': { name: 'Nearly LP lock', kind: 'launchpad', about: 'sys.nearlyLock' },
+  'meme-cooking.near': { name: 'Meme Cooking', kind: 'launchpad', about: 'sys.memeCooking' },
+  'contract.main.burrow.near': { name: 'Rhea Lending', kind: 'lending', about: 'sys.lending' },
+  'meteor-relayer.near': { name: 'Meteor Wallet', kind: 'wallet', about: 'sys.meteorRelayer' },
+  'near': { name: 'near', kind: 'registrar', about: 'sys.registrar' },
 };
+
+// i18n key that explains a known system address, or null for everything else.
+export function systemAbout(id) {
+  return CONTRACTS[id]?.about || null;
+}
 
 // Token families recognised by account suffix (launchpads).
 export const TOKEN_FAMILIES = [

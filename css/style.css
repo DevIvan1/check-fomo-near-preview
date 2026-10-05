@@ -618,3 +618,11 @@ body.is-landing .top-actions { margin-left: 0; }
 .pc-status.sell { color: var(--down); background: color-mix(in srgb, var(--down) 14%, transparent); }
 .ord-card .pc-total .sub { font-size: 12px; font-weight: 400; }
 .orders-view .po-sort { justify-content: flex-start; }
+
+/* ---------- system addresses (contracts, not people) ---------- */
+.sys-note {
+  margin: 12px 0 0; padding: 9px 12px; border-radius: 10px; font-size: 13px; line-height: 1.5;
+  background: color-mix(in srgb, var(--warn) 10%, transparent); color: var(--text);
+  border: 1px solid color-mix(in srgb, var(--warn) 28%, transparent);
+}
+.sys-note strong { color: var(--warn); font-weight: 600; }

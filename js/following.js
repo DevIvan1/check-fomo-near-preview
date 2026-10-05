@@ -10,9 +10,9 @@ const PAGE = 10; // latest transactions read per wallet
 const LIVE_WINDOW_MS = 10 * 60 * 1000; // only fresh trades alert
 const MAX_EVENTS = 200;
 
-const FEED_KINDS = new Set(['trade', 'transfer_in', 'transfer_out', 'ft_in', 'ft_out']);
+const FEED_KINDS = new Set(['trade', 'order', 'transfer_in', 'transfer_out', 'ft_in', 'ft_out']);
 
-// Trades and real transfers make the feed; payouts, registrations and mentions do not.
+// Trades, limit orders and real transfers make the feed; payouts, registrations and mentions do not.
 // (The feed reads transactions the wallet signed itself, so these are its own moves.)
 export function isFeedEvent(a) {
   return !!a && FEED_KINDS.has(a.kind) && a.importance !== 'minor';

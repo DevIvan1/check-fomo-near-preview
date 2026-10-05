@@ -29,7 +29,7 @@ Where the numbers come from, without counting anything twice:
 - **Profile.** Every wallet page shows PnL tiles for 24h, 7 days and 30 days (click one to open the detailed summary), plus the NEAR Social name and avatar when the wallet has them. Your own page is marked "You" and has Disconnect.
 - **Follow.** Every wallet page has a Follow button; if you are not connected, it signs you in and follows right after. Follows are kept in this browser per connected account, and you can import your follows from NEAR Social (`social.near`, up to 50 at a time).
 - **Following feed** (bottom right) — live trades of the wallets you follow:
-  - **Activity** tab: the trades, with sound and desktop alerts for fresh trades (can be switched off in Settings);
+  - **Activity** tab: the trades and limit orders (placed, cancelled, filled — with the market cap of the order), with sound and desktop alerts for fresh ones (can be switched off in Settings);
   - **Wallets** tab: manage the followed wallets.
 
   Each followed wallet gets one cheap balance check in turn, and its transactions are read only when the balance changes, plus a safety refresh every 2 minutes. This keeps the feed within public API limits even with dozens of follows.
@@ -42,6 +42,7 @@ Where the numbers come from, without counting anything twice:
 
   Sort by date opened or by size (invested amount); click the active option again to reverse. Cards refresh live with the pool price. The right column holds only the following feed.
 - **Orders tab: limit orders.** The wallet's open limit orders on Rhea DCL (where Nearly tokens and most memes trade), read from the DCL contract (`list_active_orders`): buy or sell, the limit price in NEAR and USD, the **market cap in USD at which the order fills**, the market cap now, how far the price has to move to fill it, the amount and how much is already filled. Feed posts about limit orders say the same: "Limit buy: NEARLY for 500 NEAR at $4.3M MC", "Cancelled a limit sell of NEARLY ($3.4M MC)", and an old order that is no longer open is marked as such. The price comes from the order's DCL point (1.0001^point, scaled by decimals); MC = limit price × total supply.
+- **System addresses are marked.** A contract is not a person: its page says so and what it does — for example `aggregatedex.near` is the Delta Trade swap aggregator (wallets and apps send it tokens, it swaps them on DEXes such as Rhea and sends the result back, so its “trades” are many people’s swaps). The same for NEAR Intents, Rhea, Rhea DCL, wNEAR, Nearly and other known contracts, and for any token contract. System contracts never appear in the leaderboard.
 - **Louder, longer alerts.** Three-note sounds through a compressor: rising for buys, falling for sells.
 
 ## Features
@@ -111,7 +112,7 @@ python -m http.server 8000
 ```
 
 - **App:** http://localhost:8000/
-- **Tests:** http://localhost:8000/tests/ (81 tests: parser, both languages, PnL and summary, positions, limit orders, leaderboard maths and engine, usage-log client, backup-source conversion, alert rules, XSS safety). Usage-log server and the Excel export, offline against a fake Redis: `python tests/test_usage_log.py` (10 tests). `tests/` and `tools/` are not deployed to Vercel (see `.vercelignore`).
+- **Tests:** http://localhost:8000/tests/ (83 tests: parser, both languages, PnL and summary, positions, limit orders, leaderboard maths and engine, usage-log client, backup-source conversion, alert rules, XSS safety). Usage-log server and the Excel export, offline against a fake Redis: `python tests/test_usage_log.py` (10 tests). `tests/` and `tools/` are not deployed to Vercel (see `.vercelignore`).
 
 Before every commit, stamp the module versions:
 

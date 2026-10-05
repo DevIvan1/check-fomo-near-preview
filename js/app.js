@@ -1,23 +1,23 @@
 // UI + live polling loop.
 
-import { DEFAULT_SETTINGS, HISTORY_PAGE, POLL_PAGE, NEAR_ID, WNEAR, DCL_CONTRACT, explorer } from './config.js?v=b7d0b915';
-import { normalizeAccount, shouldAlert, soundKind } from './rules.js?v=b7d0b915';
-import * as api from './api.js?v=b7d0b915';
-import * as tokens from './tokens.js?v=b7d0b915';
-import { analyzeTx } from './parser.js?v=b7d0b915';
-import { describe, tokenLinks } from './describe.js?v=b7d0b915';
-import { computePositions, periodSummary, positionCards, positionsOverview, sortPositionCards } from './positions.js?v=b7d0b915';
-import * as alerts from './alerts.js?v=b7d0b915';
+import { DEFAULT_SETTINGS, HISTORY_PAGE, POLL_PAGE, NEAR_ID, WNEAR, DCL_CONTRACT, explorer, systemAbout, tokenFamily } from './config.js?v=55554cd2';
+import { normalizeAccount, shouldAlert, soundKind } from './rules.js?v=55554cd2';
+import * as api from './api.js?v=55554cd2';
+import * as tokens from './tokens.js?v=55554cd2';
+import { analyzeTx } from './parser.js?v=55554cd2';
+import { describe, tokenLinks } from './describe.js?v=55554cd2';
+import { computePositions, periodSummary, positionCards, positionsOverview, sortPositionCards } from './positions.js?v=55554cd2';
+import * as alerts from './alerts.js?v=55554cd2';
 import {
   fmtNum, fmtUsd, fmtUsdCompact, fmtPct, fmtDateShort, relTime, fmtTime, fmtDateTime, dayLabel, toNumber, shortAccount,
   storageGet, storageSet, toDecimalString,
-} from './util.js?v=b7d0b915';
-import { t, tp, setLang, getLang, getLocale, applyStatic } from './i18n.js?v=b7d0b915';
-import * as session from './session.js?v=b7d0b915';
-import { FollowFeed } from './following.js?v=b7d0b915';
-import { Leaderboard, WINDOWS as LB_WINDOWS } from './leaderboard.js?v=b7d0b915';
-import { track } from './track.js?v=b7d0b915';
-import { orderView, orderTokens, sortOrders, DCL_ORDERS_METHOD } from './orders.js?v=b7d0b915';
+} from './util.js?v=55554cd2';
+import { t, tp, setLang, getLang, getLocale, applyStatic } from './i18n.js?v=55554cd2';
+import * as session from './session.js?v=55554cd2';
+import { FollowFeed } from './following.js?v=55554cd2';
+import { Leaderboard, WINDOWS as LB_WINDOWS, memePlatform } from './leaderboard.js?v=55554cd2';
+import { track } from './track.js?v=55554cd2';
+import { orderView, orderTokens, sortOrders, DCL_ORDERS_METHOD } from './orders.js?v=55554cd2';
 
 const $ = (sel) => document.querySelector(sel);
 const SETTINGS_KEY = 'nwm.settings.v1';
@@ -388,6 +388,7 @@ async function switchAccount(acc, { push = true } = {}) {
   $('#accountId').textContent = acc;
   renderAccountActions();
   loadAccountIdent(acc);
+  renderSystemNote(acc);
   startLeaderboard();
   const links = $('#accountLinks');
   links.replaceChildren(
@@ -940,7 +941,7 @@ function onTick() {
 
 function startTicker() {
   try {
-    const w = new Worker(new URL('./ticker.js?v=b7d0b915', import.meta.url));
+    const w = new Worker(new URL('./ticker.js?v=55554cd2', import.meta.url));
     w.onmessage = onTick;
     w.postMessage({ cmd: 'start', ms: 500 });
   } catch {
@@ -1918,7 +1919,31 @@ function syncLbFold() {
 }
 
 function ctxFollow() {
-  return { ...describeCtx(), positionOpen: () => null, cycleStats: () => null };
+  return { ...describeCtx(), positionOpen: () => null, cycleStats: () => null, orderOpen: () => null };
+}
+
+// Contracts are not people: say so on their page, with what the address does.
+// Known system contracts come from config; any other token contract is recognised by its metadata.
+function renderSystemNote(acc) {
+  const box = $('#sysNote');
+  if (!box) return;
+  box.hidden = true;
+  box.dataset.acc = acc;
+  const show = (text) => {
+    if (box.dataset.acc !== acc) return;
+    box.replaceChildren(el('strong', {}, t('sys.title')), ' ', text);
+    box.hidden = false;
+  };
+  const about = systemAbout(acc);
+  if (about) {
+    show(t(about));
+    return;
+  }
+  tokens.ensureMeta(new Set([acc])).then(() => {
+    const m = tokens.meta(acc);
+    if (!m || m.decimals === null || m.decimals === undefined || m.error) return;
+    show(t('sys.token', { sym: m.symbol || acc, platform: memePlatform(acc) || tokenFamily(acc)?.name || '' }));
+  }).catch(() => {});
 }
 
 function renderFollowPanel() {
@@ -2005,7 +2030,7 @@ function renderFollowWallets(body, s, follows) {
 let lastFollowSound = 0;
 function onFollowEvent(ev) {
   const st = state.settings;
-  if (st.followAlerts === false || ev.a.kind !== 'trade') return;
+  if (st.followAlerts === false || (ev.a.kind !== 'trade' && ev.a.kind !== 'order')) return;
   if (ev.account === state.account) return; // the open wallet already alerts from its own feed
   if (!shouldAlert(ev.a, { ...st, alertLevel: 'trades' })) return;
   const d = describe(ev.a, ctxFollow());
