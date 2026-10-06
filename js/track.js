@@ -29,13 +29,14 @@ function beacon(url, body) {
 // kind: 'connect' (wallet connected) | 'manual' (signed in by typing an account) |
 //       'visit' (a connected wallet opened the site) | 'search' (an address typed into search)
 // by: for searches, the signed-in wallet that searched (none when nobody is signed in).
-export function track(kind, account, wallet = null, { by = null, send = beacon, loc = location, now = Date.now(), storage = localStorage } = {}) {
+export function track(kind, account, wallet = null, { by = null, send = beacon, loc = location, now = Date.now(), storage = null } = {}) {
   const acc = normalizeAccount(account);
   const who = kind === 'search' ? normalizeAccount(by) : null;
   const url = trackEndpoint(loc);
   if (!acc || !TRACK_KINDS.includes(kind) || !url) return false;
   let sent = {};
   try {
+    storage ||= localStorage; // reading localStorage itself throws where site data is blocked
     sent = JSON.parse(storage.getItem(SENT_KEY) || '{}') || {};
   } catch {
     sent = {};

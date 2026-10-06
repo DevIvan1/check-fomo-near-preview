@@ -211,9 +211,12 @@ def main():
                     raise
                 time.sleep(RETRY_PAUSE)
     except Exception as e:  # keep showing the last good table
-        cached = json.loads(CACHE.read_text(encoding='utf-8')) if CACHE.exists() else None
+        try:
+            cached = json.loads(CACHE.read_text(encoding='utf-8')) if CACHE.exists() else None
+        except (OSError, ValueError):  # a damaged cache must not hide the real error
+            cached = None
         note = f'Не удалось обновить в {now:%d.%m.%Y %H:%M}: {clean(e, 120)}'
-        if cached:
+        if isinstance(cached, dict) and 'data' in cached and 'at' in cached:
             save(workbook(*build(cached['data']), datetime.datetime.fromisoformat(cached['at']), note))
         else:
             save(workbook([], [], now, note))
