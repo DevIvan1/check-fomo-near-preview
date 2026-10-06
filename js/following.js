@@ -39,6 +39,7 @@ export class FollowFeed {
       this.accounts.clear();
       this.events.clear();
       this.generation += 1;
+      this.busy = false; // a step still in flight belongs to the old owner and no longer clears it
     }
     const wanted = new Set(list.map((x) => x.account));
     for (const acc of [...this.accounts.keys()]) {

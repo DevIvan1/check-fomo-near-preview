@@ -2,6 +2,7 @@
 // plus read-only helpers for the NEAR Social graph (social.near).
 
 const SESSION_KEY = 'cf.session.v1';
+const ACCOUNT_ID = /^(([a-z\d]+[-_])*[a-z\d]+\.)*([a-z\d]+[-_])*[a-z\d]+$/; // NEAR account id rules
 const FOLLOWS_PREFIX = 'cf.follows.v1.';
 const listeners = new Set();
 
@@ -102,7 +103,7 @@ export function followMany(owner, accounts, limit = IMPORT_LIMIT) {
 export function parseSocialFollows(json, account) {
   const f = json?.[account]?.graph?.follow;
   if (!f || typeof f !== 'object') return [];
-  return Object.keys(f).filter((k) => /^[a-z0-9._-]{2,64}$/.test(k));
+  return Object.keys(f).filter((k) => k.length >= 2 && k.length <= 64 && ACCOUNT_ID.test(k));
 }
 
 // Profile image from social.near: { url } | { ipfs_cid } | { nft: … } (nft not resolved).
@@ -128,6 +129,7 @@ export async function nearSocialProfile(account, viewFn) {
       const name = typeof prof.name === 'string' ? prof.name.replace(/[\u0000-\u001f]/g, '').slice(0, 40) : '';
       return { name, image: socialImageUrl(prof.image) };
     } catch {
+      setTimeout(() => profileCache.delete(account), 60000); // a network hiccup is not "no profile": ask again later
       return { name: '', image: null };
     }
   })();

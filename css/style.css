@@ -185,7 +185,7 @@ body.is-landing .footer { display: none; }
 }
 
 @media (max-width: 900px) {
-  .layout { grid-template-columns: minmax(0, 1fr); grid-template-areas: "account" "lb" "side" "feed"; grid-template-rows: auto; gap: 12px; }
+  .layout { grid-template-columns: minmax(0, 1fr); grid-template-areas: "account" "side" "feed"; grid-template-rows: auto; gap: 12px; }
   .side-col { position: static; max-height: none; overflow: visible; }
   .side-summary {
     display: block; cursor: pointer; list-style: none; padding: 10px 14px; border: 1px solid var(--line);

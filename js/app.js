@@ -1,23 +1,23 @@
 // UI + live polling loop.
 
-import { DEFAULT_SETTINGS, HISTORY_PAGE, POLL_PAGE, NEAR_ID, WNEAR, DCL_CONTRACT, explorer, systemAbout, tokenFamily } from './config.js?v=9489111f';
-import { normalizeAccount, shouldAlert, soundKind } from './rules.js?v=9489111f';
-import * as api from './api.js?v=9489111f';
-import * as tokens from './tokens.js?v=9489111f';
-import { analyzeTx } from './parser.js?v=9489111f';
-import { describe, tokenLinks } from './describe.js?v=9489111f';
-import { computePositions, periodSummary, positionCards, positionsOverview, sortPositionCards } from './positions.js?v=9489111f';
-import * as alerts from './alerts.js?v=9489111f';
+import { DEFAULT_SETTINGS, HISTORY_PAGE, POLL_PAGE, NEAR_ID, WNEAR, DCL_CONTRACT, explorer, systemAbout, tokenFamily } from './config.js?v=5156bc38';
+import { normalizeAccount, shouldAlert, soundKind } from './rules.js?v=5156bc38';
+import * as api from './api.js?v=5156bc38';
+import * as tokens from './tokens.js?v=5156bc38';
+import { analyzeTx } from './parser.js?v=5156bc38';
+import { describe, tokenLinks } from './describe.js?v=5156bc38';
+import { computePositions, periodSummary, positionCards, positionsOverview, sortPositionCards } from './positions.js?v=5156bc38';
+import * as alerts from './alerts.js?v=5156bc38';
 import {
   fmtNum, fmtUsd, fmtUsdCompact, fmtPct, fmtDateShort, relTime, fmtTime, fmtDateTime, dayLabel, toNumber, shortAccount,
   storageGet, storageSet, toDecimalString,
-} from './util.js?v=9489111f';
-import { t, tp, setLang, getLang, getLocale, applyStatic } from './i18n.js?v=9489111f';
-import * as session from './session.js?v=9489111f';
-import { FollowFeed } from './following.js?v=9489111f';
-import { Leaderboard, WINDOWS as LB_WINDOWS, memePlatform } from './leaderboard.js?v=9489111f';
-import { track } from './track.js?v=9489111f';
-import { orderView, orderTokens, sortOrders, DCL_ORDERS_METHOD } from './orders.js?v=9489111f';
+} from './util.js?v=5156bc38';
+import { t, tp, setLang, getLang, getLocale, applyStatic } from './i18n.js?v=5156bc38';
+import * as session from './session.js?v=5156bc38';
+import { FollowFeed } from './following.js?v=5156bc38';
+import { Leaderboard, WINDOWS as LB_WINDOWS, memePlatform } from './leaderboard.js?v=5156bc38';
+import { track } from './track.js?v=5156bc38';
+import { orderView, orderTokens, sortOrders, DCL_ORDERS_METHOD } from './orders.js?v=5156bc38';
 
 const $ = (sel) => document.querySelector(sel);
 const SETTINGS_KEY = 'nwm.settings.v1';
@@ -32,6 +32,10 @@ const BURST_POLL_MS = 2500;
 const BURST_WINDOW_MS = 9000;
 const MAX_PENDING_TRIES = 15;
 const BACKUP_POLL_MS = 10000; // NearBlocks allows fewer calls; poll it more gently
+// Transactions older than this when first seen (the computer slept, the network was down) join the
+// feed quietly: no sound or notification for something that happened long ago.
+const LIVE_MAX_AGE_MS = 10 * 60 * 1000;
+const GAP_AFTER_MS = 60000; // a poll this late may have missed more than one page of transactions
 let txApiDownUntil = 0; // while set, history comes from the backup sources
 
 // Account history page: FastNEAR first, NearBlocks when FastNEAR fails (no pagination there).
@@ -99,9 +103,21 @@ const ICONS = {
   copy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1"/></svg>',
 };
 
+// Saved settings from older versions or a damaged storage entry: a NaN poll interval would
+// silently stop every live check, so numbers are brought back into range.
+function loadSettings() {
+  const saved = storageGet(SETTINGS_KEY, {});
+  const s = { ...DEFAULT_SETTINGS, ...(saved && typeof saved === 'object' ? saved : {}) };
+  const num = (v, min, max, def) => (v !== null && v !== '' && Number.isFinite(Number(v)) ? Math.min(max, Math.max(min, Number(v))) : def);
+  s.pollSec = Math.round(num(s.pollSec, 2, 60, DEFAULT_SETTINGS.pollSec));
+  s.volume = num(s.volume, 0, 1, DEFAULT_SETTINGS.volume);
+  s.alertMinNear = num(s.alertMinNear, 0, Infinity, 0);
+  return s;
+}
+
 const state = {
   account: null,
-  settings: { ...DEFAULT_SETTINGS, ...storageGet(SETTINGS_KEY, {}) },
+  settings: loadSettings(),
   items: new Map(),
   generation: 0,
   resumeToken: null,
@@ -336,7 +352,7 @@ function resetAccountState(acc) {
   state.generation += 1; // drops results of requests still in flight for the previous account
   Object.assign(state, {
     account: acc, items: new Map(), resumeToken: null, totalCount: null, initialDone: false, historyLoaded: false,
-    lastOkAt: 0, errStreak: 0, lastErr: null, balance: null, blockHeight: null, ftBalances: new Map(), ftLoaded: false,
+    lastOkAt: 0, lastPollAt: 0, errStreak: 0, lastErr: null, balance: null, blockHeight: null, ftBalances: new Map(), ftLoaded: false,
     positions: new Map(), pendingNew: 0, loadingHistory: false, polling: false, missingAccount: false,
     detecting: false, detectErr: 0, acctSig: null, burstUntil: 0, historyRetryMs: 5000,
     nextLiveAt: 0, liveBusy: false, liveTicks: 0,
@@ -515,11 +531,21 @@ function positionOpen(token) {
   return p || state.ftLoaded ? false : null;
 }
 
+// One unusual transaction must not take the whole feed down: it is left out instead.
+function describeSafe(a, ctx) {
+  try {
+    return describe(a, ctx);
+  } catch (e) {
+    console.error('describe failed', a.hash, e);
+    return null;
+  }
+}
+
 function recompute() {
   const analyses = [...state.items.values()].map((i) => i.a);
   state.positions = computePositions(analyses, { decimals: tokens.decimals, launchToken: tokens.launchToken });
   const ctx = describeCtx();
-  for (const it of state.items.values()) it.d = describe(it.a, ctx);
+  for (const it of state.items.values()) it.d = describeSafe(it.a, ctx);
 }
 
 async function ingest(rows, { live, gen }) {
@@ -586,18 +612,33 @@ async function poll() {
   const gen = state.generation;
   let failed = false;
   try {
-    const r = await listTxs({ limit: POLL_PAGE });
+    let r = await listTxs({ limit: POLL_PAGE });
     if (gen !== state.generation) return;
+    let rows = r.account_txs || [];
+    // No poll for a while (the computer slept, the network was down) and every row is new: more may
+    // have happened meanwhile. One bigger page closes the gap, so no trade is missing from positions
+    // and PnL. (Not for a busy contract polled on time: that would fetch hundreds of txs every poll.)
+    const away = state.lastPollAt && Date.now() - state.lastPollAt > GAP_AFTER_MS;
+    if (away && rows.length >= POLL_PAGE && state.source === 'fastnear' && rows.every((x) => !state.items.has(x.transaction_hash))) {
+      r = await listTxs({ limit: HISTORY_PAGE });
+      if (gen !== state.generation) return;
+      rows = r.account_txs || [];
+    }
     if (r.txs_count !== undefined && r.txs_count > (state.totalCount ?? 0)) state.totalCount = r.txs_count;
-    const fresh = (r.account_txs || []).filter((t) => !state.items.has(t.transaction_hash));
+    const fresh = rows.filter((t) => !state.items.has(t.transaction_hash));
     if (fresh.length) {
       // Rows far older than what we already show (e.g. filling a gap after the backup source)
-      // are history, not new events: no alerts for them.
+      // are history, not new events: no alerts for them. Neither are rows that are simply old.
       const known = [...state.items.values()].map((i) => i.height || 0);
       const liveCut = (known.length ? Math.max(...known) : 0) - 300; // ≈ 5 minutes of blocks
-      const added = await ingest(fresh, { live: (row) => !row.tx_block_height || row.tx_block_height > liveCut, gen });
+      const now = Date.now();
+      const recent = (row) => {
+        const ns = String(row.tx_block_timestamp ?? '');
+        return !/^\d{13,}$/.test(ns) || now - Number(ns) / 1e6 < LIVE_MAX_AGE_MS;
+      };
+      const added = await ingest(fresh, { live: (row) => (!row.tx_block_height || row.tx_block_height > liveCut) && recent(row), gen });
       if (added.length) {
-        onNewItems(added);
+        onNewItems(added.filter((i) => i.live));
         state.burstUntil = Date.now() + BURST_WINDOW_MS; // follow-up receipts and token balances
         state.nextFullAt = Date.now() + 3000;
       }
@@ -611,6 +652,7 @@ async function poll() {
     if (pending.length) await refreshPending(pending, gen);
     processAlerts();
     state.lastOkAt = Date.now();
+    state.lastPollAt = state.lastOkAt;
     state.errStreak = 0;
     state.lastErr = null;
   } catch (e) {
@@ -659,7 +701,7 @@ function processAlerts() {
   let soundPlayed = false;
   for (const it of due) {
     it.alerted = true;
-    if (!shouldAlert(it.a, state.settings)) continue;
+    if (!it.d || !shouldAlert(it.a, state.settings)) continue;
     const s = state.settings;
     if (s.sound && !soundPlayed) soundPlayed = alerts.playSound(soundKind(it.a), s.volume);
     if (document.hidden) alerts.bumpUnread(it.d.title);
@@ -789,7 +831,8 @@ function refreshLiveLines(tokenSet) {
   for (const it of state.items.values()) {
     const tok = it.a.kind === 'trade' ? it.a.trade.token : it.a.kind === 'order' ? orderTokens(orderPoolsOf(it.a)[0])?.token : null;
     if (!tok || !tokenSet.has(tok)) continue;
-    const d = describe(it.a, ctx);
+    const d = describeSafe(it.a, ctx);
+    if (!d) continue;
     const sig = JSON.stringify(d);
     if (sig === it.sig) continue;
     it.d = d;
@@ -941,7 +984,7 @@ function onTick() {
 
 function startTicker() {
   try {
-    const w = new Worker(new URL('./ticker.js?v=9489111f', import.meta.url));
+    const w = new Worker(new URL('./ticker.js?v=5156bc38', import.meta.url));
     w.onmessage = onTick;
     w.postMessage({ cmd: 'start', ms: 500 });
   } catch {
@@ -2033,7 +2076,8 @@ function onFollowEvent(ev) {
   if (st.followAlerts === false || (ev.a.kind !== 'trade' && ev.a.kind !== 'order')) return;
   if (ev.account === state.account) return; // the open wallet already alerts from its own feed
   if (!shouldAlert(ev.a, { ...st, alertLevel: 'trades' })) return;
-  const d = describe(ev.a, ctxFollow());
+  const d = describeSafe(ev.a, ctxFollow());
+  if (!d) return;
   const headline = `${shortAccount(ev.account)}: ${d.title}`;
   if (st.sound && Date.now() - lastFollowSound > 1200) {
     if (alerts.playSound(soundKind(ev.a), st.volume)) lastFollowSound = Date.now();

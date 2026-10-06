@@ -1,8 +1,8 @@
 // Network layer: FastNEAR tx API, NEAR RPC, FastNEAR balances, Nearly and price APIs.
 
-import { TX_API, FASTNEAR_API, RPC_URLS, RPC_FAST, RPC_ARCHIVAL, NEARBLOCKS_API, NEARLY_API, INTEAR_PRICES, REF_PRICES, INTEAR_EVENTS, REF_API, FASTNEAR_API_KEY } from './config.js?v=9489111f';
-import { fromRpcTxStatus } from './parser.js?v=9489111f';
-import { sleep, chunk } from './util.js?v=9489111f';
+import { TX_API, FASTNEAR_API, RPC_URLS, RPC_FAST, RPC_ARCHIVAL, NEARBLOCKS_API, NEARLY_API, INTEAR_PRICES, REF_PRICES, INTEAR_EVENTS, REF_API, FASTNEAR_API_KEY } from './config.js?v=5156bc38';
+import { fromRpcTxStatus } from './parser.js?v=5156bc38';
+import { sleep, chunk } from './util.js?v=5156bc38';
 
 export class HttpError extends Error {
   constructor(status, url) {
@@ -79,6 +79,16 @@ let rpcIndex = 0;
 let rpcTurn = 0;
 const rpcCooldown = new Map(); // url -> timestamp until which the endpoint is skipped (429 / network errors)
 
+// NEAR node errors about the request itself (unknown account or transaction, contract panic…) are
+// the answer: every provider says the same. Anything else in an `error` body (a provider's own rate
+// limit or tier message, a node that is out of sync or timed out) is that provider's problem.
+const NODE_BUSY = new Set(['TIMEOUT_ERROR', 'NO_SYNCED_BLOCKS', 'NOT_SYNCED_YET', 'UNAVAILABLE_SHARD', 'INTERNAL_ERROR']);
+export function isRequestError(err) {
+  if (!err || typeof err !== 'object') return false;
+  if (err.name !== 'HANDLER_ERROR' && err.name !== 'REQUEST_VALIDATION_ERROR') return false;
+  return !NODE_BUSY.has(err.cause?.name);
+}
+
 // spread: start each call on the next fast endpoint (round-robin) to share frequent polling.
 export async function rpc(method, params, { spread = false } = {}) {
   let lastErr;
@@ -93,9 +103,8 @@ export async function rpc(method, params, { spread = false } = {}) {
       const r = await fetchJson(url, { method: 'POST', body: { jsonrpc: '2.0', id: 'm', method, params }, timeout: 8000, retries: 0 });
       if (r.error) {
         const msg = r.error.data || r.error.message || JSON.stringify(r.error);
-        // Errors about the request itself are returned as-is, no point rotating.
         const e = new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
-        e.rpc = true;
+        e.rpc = isRequestError(r.error); // the request's own error: returned as-is, no point rotating
         throw e;
       }
       rpcCooldown.delete(url);

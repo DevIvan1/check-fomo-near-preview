@@ -1,8 +1,8 @@
 // Token metadata, Nearly launch info and prices, with in-memory + localStorage caches.
 
-import { viewFunction, nearlyLaunch, intearPrice, refPriceList } from './api.js?v=9489111f';
-import { NEAR_ID, WNEAR, DCL_CONTRACT, tokenFamily } from './config.js?v=9489111f';
-import { storageGet, storageSet } from './util.js?v=9489111f';
+import { viewFunction, nearlyLaunch, intearPrice, refPriceList } from './api.js?v=5156bc38';
+import { NEAR_ID, WNEAR, DCL_CONTRACT, tokenFamily } from './config.js?v=5156bc38';
+import { storageGet, storageSet } from './util.js?v=5156bc38';
 
 const META_KEY = 'nwm.meta.v2';
 const LAUNCH_KEY = 'nwm.launchmap.v1';
@@ -84,7 +84,7 @@ async function loadMeta(id) {
         decimals: Number.isInteger(dec) && dec >= 0 && dec <= 64 ? dec : null,
         icon: safeIcon(md.icon),
       };
-      if (m.decimals === null) m.error = true;
+      if (m.decimals === null) Object.assign(m, { error: true, retried: !!prev });
     } catch {
       m = { id, symbol: shortId(id), name: '', decimals: null, icon: null, error: true, retried: !!prev };
     }

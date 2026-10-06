@@ -1,10 +1,10 @@
 // Builds the human-readable post for an analysed transaction (texts come from i18n).
 // Pure apart from the current language: everything external comes through `ctx`.
 
-import { NEAR_ID, WNEAR, contractName, tokenFamily, explorer } from './config.js?v=9489111f';
-import { toNumber, toDecimalString, fmtNum, fmtUsd, fmtUsdCompact, fmtPct, shortAccount, shortHash, absBig, isImplicit } from './util.js?v=9489111f';
-import { orderView, orderEventKind } from './orders.js?v=9489111f';
-import { t, tp, getLocale } from './i18n.js?v=9489111f';
+import { NEAR_ID, WNEAR, contractName, tokenFamily, explorer } from './config.js?v=5156bc38';
+import { toNumber, toDecimalString, fmtNum, fmtUsd, fmtUsdCompact, fmtPct, shortAccount, shortHash, absBig, isImplicit } from './util.js?v=5156bc38';
+import { orderView, orderEventKind } from './orders.js?v=5156bc38';
+import { t, tp, getLocale } from './i18n.js?v=5156bc38';
 
 const GLYPHS = {
   transfer_in: '↓', transfer_out: '↑', ft_in: '↓', ft_out: '↑', receive_multi: '↓', debit: '↑',
@@ -134,9 +134,10 @@ function pnlLine(a, tr, now, f, ctx) {
     };
   }
   if (!cyc && ctx.positionOpen && ctx.positionOpen(tr.token) === false) return { label: t('l.pnl'), value: t('closed') };
-  if (!now) return null;
+  const qty = f.num(tr.amountOut, tr.token);
+  if (!now || qty === null) return null; // unknown decimals: no value, not a −100% loss
   const spent = f.num(tr.amountIn, NEAR_ID);
-  const value = f.num(tr.amountOut, tr.token) * now;
+  const value = qty * now;
   const pnl = value - spent;
   const pct = spent ? (pnl / spent) * 100 : null;
   return { label: t('l.pnl'), value: pnlValue(pct, pnl), note: usdText(pnl, ctx), tone: pnl >= 0 ? 'up' : 'down', dyn: true, live: true };
@@ -282,7 +283,7 @@ export function describe(a, ctx) {
       } else {
         main.push({ label: t('l.status'), value: t('executingTx') });
       }
-      main.push(tokenLine(target, f));
+      if (target !== NEAR_ID) main.push(tokenLine(target, f)); // a NEAR swap through an aggregator names no token
       out.tags.push(t(pending ? 'tag.pending' : 'tag.error'));
       break;
     }
@@ -385,7 +386,9 @@ export function describe(a, ctx) {
       break;
     }
     case 'storage': {
-      const isToken = a.contract !== 'v2.ref-finance.near' && a.contract !== 'dclv2.ref-labs.near';
+      // A token is a contract with token metadata; storage on other contracts (social.near…) is not.
+      const isToken = a.contract !== 'v2.ref-finance.near' && a.contract !== 'dclv2.ref-labs.near'
+        && (f.dec(a.contract) !== null || !!tokenFamily(a.contract));
       if (isToken) out.icon = { token: a.contract };
       const target = isToken ? f.sym(a.contract) : contractName(a.contract);
       out.title = a.forAccount && a.forAccount !== a.account
@@ -442,7 +445,7 @@ export function describe(a, ctx) {
     case 'liquidity': {
       const names = [...new Set(a.dclEvents.map((e) => e.event))].join(', ');
       out.title = t(a.kind === 'order' ? 't.order' : 't.liquidity', names);
-      const pools = [...new Set(a.dclEvents.flatMap((e) => e.data.map((d) => d.pool_id)).filter(Boolean))];
+      const pools = [...new Set(a.dclEvents.flatMap((e) => e.data.map((d) => d?.pool_id)).filter(Boolean))];
       pools.forEach((p) => main.push({ label: t('l.pool'), value: p, mono: true }));
       break;
     }

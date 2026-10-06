@@ -1,18 +1,19 @@
 // Browser test suite. Open tests/index.html through any static server.
 
-import { analyzeTx, parseLog, statusKind, failureMessage, fromRpcTxStatus } from '../js/parser.js?v=9489111f';
-import { describe, humanError } from '../js/describe.js?v=9489111f';
-import { computePositions, positionRows, accountStats, periodSummary, positionCards, positionsOverview, sortPositionCards } from '../js/positions.js?v=9489111f';
-import { normalizeAccount, shouldAlert, nearSize, soundKind } from '../js/rules.js?v=9489111f';
-import { toDecimalString, toNumber, fmtNum, big, shortHash, shortAccount, fmtPct, relTime } from '../js/util.js?v=9489111f';
-import { safeIcon, dclPrice, routePrice } from '../js/tokens.js?v=9489111f';
-import { NEAR_ID, systemAbout, isStable } from '../js/config.js?v=9489111f';
-import * as session from '../js/session.js?v=9489111f';
-import { FollowFeed, isFeedEvent } from '../js/following.js?v=9489111f';
-import { setLang, t, tp, dictKeys } from '../js/i18n.js?v=9489111f';
-import * as lb from '../js/leaderboard.js?v=9489111f';
-import { track, trackEndpoint } from '../js/track.js?v=9489111f';
-import { pointPrice, orderTokens, orderView, orderEventKind, sortOrders } from '../js/orders.js?v=9489111f';
+import { analyzeTx, parseLog, statusKind, failureMessage, fromRpcTxStatus } from '../js/parser.js?v=5156bc38';
+import { describe, humanError } from '../js/describe.js?v=5156bc38';
+import { computePositions, positionRows, accountStats, periodSummary, positionCards, positionsOverview, sortPositionCards } from '../js/positions.js?v=5156bc38';
+import { normalizeAccount, shouldAlert, nearSize, soundKind } from '../js/rules.js?v=5156bc38';
+import { toDecimalString, toNumber, fmtNum, big, shortHash, shortAccount, fmtPct, relTime } from '../js/util.js?v=5156bc38';
+import { safeIcon, dclPrice, routePrice } from '../js/tokens.js?v=5156bc38';
+import { NEAR_ID, systemAbout, isStable } from '../js/config.js?v=5156bc38';
+import * as session from '../js/session.js?v=5156bc38';
+import { FollowFeed, isFeedEvent } from '../js/following.js?v=5156bc38';
+import { setLang, t, tp, dictKeys } from '../js/i18n.js?v=5156bc38';
+import * as lb from '../js/leaderboard.js?v=5156bc38';
+import { track, trackEndpoint } from '../js/track.js?v=5156bc38';
+import { pointPrice, orderTokens, orderView, orderEventKind, sortOrders } from '../js/orders.js?v=5156bc38';
+import { isRequestError } from '../js/api.js?v=5156bc38';
 
 const ACC = 'hotfrog2879.near';
 const results = [];
@@ -1318,6 +1319,69 @@ async function main() {
     ok(!isStable('usdc-4.nearlytrade.near'));
     ok(!isStable('usdc-4d51ec.launchpad.justhoot.near'));
     ok(!isStable('wrap.near'));
+  });
+
+  // ---------- audit fixes ----------
+  test('живой PnL: без decimals токена нет ложного −100%', () => {
+    const d = describe(A('BUY_SINGULARTY'), ctx({
+      meta: (id) => (id === NEAR_ID ? { symbol: 'NEAR', decimals: 24 } : null),
+      priceNear: () => 0.0001, positionOpen: () => true,
+    }));
+    eq(d.lines.find((l) => l.label === 'PnL'), undefined);
+  });
+  test('storage в контракте без метаданных токена — не «токен»', () => {
+    setLang('ru');
+    const d = describe({ ...A('STORAGE_SINGULARTY'), contract: 'social.near' }, ctx());
+    eq(d.title, 'Зарегистрировался в social.near');
+    eq(d.icon.token, undefined);
+    eq(d.lines.find((l) => l.label === t('l.token')), undefined);
+  });
+  test('неудачный обмен NEAR через агрегатор: нет строки «Токен: near»', () => {
+    setLang('ru');
+    const a = analyzeTx(fx.AGG_FAILED_HOOT, 'redbullish.near');
+    const d = describe({ ...a, intent: { ...a.intent, tokenIn: NEAR_ID, tokenOut: null } }, ctx());
+    has(d.title, 'не прошёл');
+    eq(d.lines.find((l) => l.label === t('l.token')), undefined);
+    setLang('en');
+  });
+  test('RPC: ошибки запроса отличаются от ошибок провайдера (те — повод сменить RPC)', () => {
+    ok(isRequestError({ name: 'HANDLER_ERROR', cause: { name: 'UNKNOWN_ACCOUNT' } }));
+    ok(isRequestError({ name: 'HANDLER_ERROR', cause: { name: 'UNKNOWN_TRANSACTION' } }));
+    ok(isRequestError({ name: 'REQUEST_VALIDATION_ERROR', cause: { name: 'PARSE_ERROR' } }));
+    ok(!isRequestError({ name: 'HANDLER_ERROR', cause: { name: 'TIMEOUT_ERROR' } }));
+    ok(!isRequestError({ name: 'INTERNAL_ERROR', cause: { name: 'INTERNAL_ERROR' } }));
+    ok(!isRequestError({ code: 30, message: 'Request timeout on the free tier' }), 'лимит провайдера');
+    ok(!isRequestError('rate limited'));
+  });
+  test('импорт из NEAR Social: только настоящие адреса NEAR', () => {
+    const json = { 'root.near': { graph: { follow: { 'mob.near': '', 'a..b': '', '-x.near': '', 'y.near.': '', 'Up.near': '', 'ok_1.near': '' } } } };
+    eq(session.parseSocialFollows(json, 'root.near').join(','), 'mob.near,ok_1.near');
+  });
+  test('лента подписок: смена владельца посреди шага не останавливает ленту', async () => {
+    let release;
+    const hold = new Promise((r) => (release = r));
+    let calls = 0;
+    const feed = new FollowFeed({
+      listTxs: async () => {
+        calls += 1;
+        if (calls === 1) await hold;
+        return { account_txs: [] };
+      },
+      fetchRaw: async () => [],
+      viewAccount: async () => ({ amount: '1', locked: '0', storage_usage: 1 }),
+      analyze: () => null,
+      enrich: async () => {},
+      onUpdate: () => {},
+      onNewEvent: () => {},
+    });
+    feed.setFollows('a.near', [{ account: 'x.near', since: 0 }]);
+    const first = feed.tick(0); // waits in listTxs
+    feed.setFollows('b.near', [{ account: 'y.near', since: 0 }]); // another wallet signs in meanwhile
+    release();
+    await first;
+    await feed.tick(10000);
+    eq(calls, 2, 'подписки нового владельца загружаются');
+    eq(feed.loading, false);
   });
 
   await Promise.all(pendingTests);

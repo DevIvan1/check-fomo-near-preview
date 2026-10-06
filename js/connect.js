@@ -1,11 +1,11 @@
 // connect.html: signs the user in with a NEAR wallet (NEAR Connect) or a typed account,
 // stores the session for the app and returns to where the user came from.
 
-import { setSession, clearSession, follow } from './session.js?v=9489111f';
-import { normalizeAccount } from './rules.js?v=9489111f';
-import { viewAccount } from './api.js?v=9489111f';
-import { setLang, t, applyStatic } from './i18n.js?v=9489111f';
-import { track } from './track.js?v=9489111f';
+import { setSession, clearSession, follow } from './session.js?v=5156bc38';
+import { normalizeAccount } from './rules.js?v=5156bc38';
+import { viewAccount } from './api.js?v=5156bc38';
+import { setLang, t, applyStatic } from './i18n.js?v=5156bc38';
+import { track } from './track.js?v=5156bc38';
 
 // Pinned official lightweight NEAR wallet connector (zero dependencies), served from this site:
 // no CDN can change the code that runs here. Resolved relative to this module.
@@ -42,7 +42,10 @@ function status(text) {
 
 function finish(accountId, wallet, watchOnly) {
   const acc = normalizeAccount(accountId);
-  if (!acc) return;
+  if (!acc) {
+    status(t('badAccount')); // the wallet answered with something that is not a NEAR account
+    return;
+  }
   setSession({ accountId: acc, wallet, watchOnly });
   track(watchOnly ? 'manual' : 'connect', acc, wallet); // a beacon: survives the redirect below
   const target = normalizeAccount(params.get('follow'));
